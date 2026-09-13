@@ -82,7 +82,7 @@ import MuralCore
         }
         return enqueue(payload)
     }
-    @discardableResult func sendTyped(_ text: String) -> Bool { enqueue(GeminiWire.text(text)) }
+    @discardableResult func sendTyped(_ text: String) -> Bool { enqueue(GeminiWire.realtimeText(text)) }
     func mute(_ value: Bool) {
         muted = value
         if value { _ = enqueue(["realtimeInput": ["audioStreamEnd": true]]) }

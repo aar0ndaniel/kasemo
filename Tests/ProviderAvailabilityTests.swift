@@ -14,8 +14,8 @@ final class ProviderAvailabilityTests: XCTestCase {
     }
 
     func testGeminiOverloadRetryIsBoundedAndDoesNotRetryAuthentication() {
-        XCTAssertEqual(GeminiWire.retryModel(status: 503, attempt: 0), GeminiWire.textModel)
-        XCTAssertEqual(GeminiWire.retryModel(status: 503, attempt: 1), "gemini-3.5-flash")
+        XCTAssertEqual(GeminiWire.retryModel(status: 503, attempt: 0), "gemini-3.5-flash")
+        XCTAssertEqual(GeminiWire.retryModel(status: 404, attempt: 1), "gemini-3.1-flash-lite")
         XCTAssertNil(GeminiWire.retryModel(status: 503, attempt: 2))
         XCTAssertNil(GeminiWire.retryModel(status: 403, attempt: 0))
         XCTAssertNil(GeminiWire.retryModel(status: 429, attempt: 0))
@@ -91,11 +91,13 @@ final class ProviderAvailabilityTests: XCTestCase {
 
         let text = GeminiWire.text("Hello")
         XCTAssertNotNil(text["clientContent"])
+        let realtimeText = try XCTUnwrap(GeminiWire.realtimeText("Hello")["realtimeInput"] as? [String: Any])
+        XCTAssertEqual(realtimeText["text"] as? String, "Hello")
 
         let audio = GeminiWire.audio(Data([0x00, 0x01]))
         let realtimeInput = try XCTUnwrap(audio["realtimeInput"] as? [String: Any])
-        let mediaChunks = try XCTUnwrap(realtimeInput["mediaChunks"] as? [[String: Any]])
-        XCTAssertEqual(mediaChunks.first?["mimeType"] as? String, "audio/pcm;rate=16000")
+        let audioPayload = try XCTUnwrap(realtimeInput["audio"] as? [String: Any])
+        XCTAssertEqual(audioPayload["mimeType"] as? String, "audio/pcm;rate=16000")
 
         let pcmPart: [String: Any] = [
             "inlineData": [

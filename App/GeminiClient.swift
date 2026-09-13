@@ -74,7 +74,7 @@ enum GeminiError: LocalizedError {
         var retry = 0
         while let http = result.1 as? HTTPURLResponse,
               let model = GeminiWire.retryModel(status: http.statusCode, attempt: retry) {
-            try await Task.sleep(for: .seconds(retry + 1))
+            try await Task.sleep(for: .seconds(1 << retry))
             try Task.checkCancellation()
             request.url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
             result = try await session.data(for: request)
@@ -83,7 +83,12 @@ enum GeminiError: LocalizedError {
         let (data, response) = result
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw GeminiError.incomplete }
-        guard (200..<300).contains(http.statusCode) else { throw GeminiError.http(http.statusCode) }
+        guard (200..<300).contains(http.statusCode) else {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? [String: Any]
+            let message = detail?["message"] as? String
+            if let message { throw GeminiError.server("HTTP \(http.statusCode): \(String(message.prefix(400)))") }
+            throw GeminiError.http(http.statusCode)
+        }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let candidate = (json["candidates"] as? [[String: Any]])?.first,
               candidate["finishReason"] as? String == "STOP",

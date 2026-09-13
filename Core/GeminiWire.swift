@@ -12,13 +12,13 @@ public enum GeminiWire {
         return components?.url
     }
 
-    /// Retry overload once, then try another supported model. Authentication and
-    /// quota errors must be shown immediately, rather than generating more traffic.
+    /// Retry transient unavailability and project/model access 404s with a small
+    /// list of current models. Authentication and quota errors are not retried.
     public static func retryModel(status: Int, attempt: Int) -> String? {
-        guard status == 503 else { return nil }
+        guard status == 404 || status == 503 else { return nil }
         switch attempt {
-        case 0: return textModel
-        case 1: return "gemini-3.5-flash"
+        case 0: return "gemini-3.5-flash"
+        case 1: return "gemini-3.1-flash-lite"
         default: return nil
         }
     }
@@ -27,7 +27,7 @@ public enum GeminiWire {
         return [
             "setup": [
                 "model": modelIdentifier,
-                "generationConfig": ["responseModalities": ["AUDIO"]],
+                "responseModalities": ["AUDIO"],
                 "systemInstruction": ["parts": [["text": instructions]]],
                 "inputAudioTranscription": [:] as [String: String],
                 "outputAudioTranscription": [:] as [String: String],
@@ -55,8 +55,13 @@ public enum GeminiWire {
     public static func text(_ text: String, complete: Bool = true) -> [String: Any] {
         ["clientContent": ["turns": [["role": "user", "parts": [["text": text]]]], "turnComplete": complete]]
     }
+    /// User text during an open Live session uses realtimeInput, as opposed to
+    /// application guidance/history which uses clientContent.
+    public static func realtimeText(_ text: String) -> [String: Any] {
+        ["realtimeInput": ["text": text]]
+    }
     public static func audio(_ bytes: Data) -> [String: Any] {
-        ["realtimeInput": ["mediaChunks": [["mimeType": "audio/pcm;rate=16000", "data": bytes.base64EncodedString()]]]]
+        ["realtimeInput": ["audio": ["mimeType": "audio/pcm;rate=16000", "data": bytes.base64EncodedString()]]]
     }
     public static func toolResponse(id: String, text: String) -> [String: Any] {
         ["toolResponse": ["functionResponses": [["id": id, "name": "mural_lookup", "response": ["result": text]]]]]
