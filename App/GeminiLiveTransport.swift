@@ -132,6 +132,7 @@ import MuralCore
     private func startAudio(generation: UUID) throws {
         let audio = AVAudioSession.sharedInstance()
         try audio.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try? audio.overrideOutputAudioPort(.speaker)
         try audio.setActive(true)
         let engine = AVAudioEngine(); self.engine = engine
         try engine.inputNode.setVoiceProcessingEnabled(true)
@@ -208,8 +209,14 @@ import MuralCore
                 onEvent?(["type": type, "event_id": UUID().uuidString, "delta": text, "start_ms": ms, "end_ms": ms + 1, "utterance_id": turnID + field])
             }
         }
-        for part in (content["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]] ?? [] {
-            if let data = GeminiWire.pcm(part) { play(data) }
+        if let parts = (content["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]] {
+            for part in parts {
+                if let text = part["text"] as? String, !text.isEmpty {
+                    let ms = max(0, Int(Date().timeIntervalSince(startedAt) * 1000))
+                    onEvent?(["type": "session.output_transcript.delta", "event_id": UUID().uuidString, "delta": text, "start_ms": ms, "end_ms": ms + 1, "utterance_id": turnID + "output"])
+                }
+                if let data = GeminiWire.pcm(part) { play(data) }
+            }
         }
         if content["turnComplete"] as? Bool == true { turnID = UUID().uuidString }
         if Date().timeIntervalSince(lastUsageUpdate) >= 5 {

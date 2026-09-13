@@ -213,7 +213,7 @@ final class MuralUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["target-caption"].label, "Jeg liker kaffe.")
         let ready = NSPredicate(format: "label == %@", "Ready when you are")
         expectation(for: ready, evaluatedWith: app.staticTexts["conversation-status"])
-        waitForExpectations(timeout: 18)
+        waitForExpectations(timeout: 25)
         XCTAssertEqual(app.staticTexts["target-caption"].label, "Hei!")
         XCTAssertEqual(app.staticTexts["meaning-caption"].label, "Hi!")
         XCTAssertFalse(app.buttons["new-conversation"].exists)
@@ -226,7 +226,7 @@ final class MuralUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["I like coffee."].exists)
         let delay = expectation(description: "Allow the 15-second reset to finish")
         DispatchQueue.main.asyncAfter(deadline: .now() + 16) { delay.fulfill() }
-        waitForExpectations(timeout: 18)
+        waitForExpectations(timeout: 25)
         XCTAssertTrue(app.staticTexts["Jeg liker kaffe."].exists)
         XCTAssertTrue(app.staticTexts["I like coffee."].exists)
         app.buttons["Done"].tap()

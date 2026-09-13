@@ -93,7 +93,9 @@ final class ProviderAvailabilityTests: XCTestCase {
         XCTAssertNotNil(text["clientContent"])
 
         let audio = GeminiWire.audio(Data([0x00, 0x01]))
-        XCTAssertNotNil(audio["realtimeInput"])
+        let realtimeInput = try XCTUnwrap(audio["realtimeInput"] as? [String: Any])
+        let mediaChunks = try XCTUnwrap(realtimeInput["mediaChunks"] as? [[String: Any]])
+        XCTAssertEqual(mediaChunks.first?["mimeType"] as? String, "audio/pcm;rate=16000")
 
         let pcmPart: [String: Any] = [
             "inlineData": [

@@ -56,7 +56,7 @@ public enum GeminiWire {
         ["clientContent": ["turns": [["role": "user", "parts": [["text": text]]]], "turnComplete": complete]]
     }
     public static func audio(_ bytes: Data) -> [String: Any] {
-        ["realtimeInput": ["audio": ["mimeType": "audio/pcm;rate=16000", "data": bytes.base64EncodedString()]]]
+        ["realtimeInput": ["mediaChunks": [["mimeType": "audio/pcm;rate=16000", "data": bytes.base64EncodedString()]]]]
     }
     public static func toolResponse(id: String, text: String) -> [String: Any] {
         ["toolResponse": ["functionResponses": [["id": id, "name": "mural_lookup", "response": ["result": text]]]]]
@@ -64,7 +64,6 @@ public enum GeminiWire {
     public static func pcm(_ part: [String: Any]) -> Data? {
         guard let inline = part["inlineData"] as? [String: Any],
               let mime = inline["mimeType"] as? String, mime.hasPrefix("audio/pcm"),
-              !mime.contains("rate=") || mime.contains("rate=24000"),
               let encoded = inline["data"] as? String, encoded.count <= 4_000_000,
               let data = Data(base64Encoded: encoded), !data.isEmpty, data.count.isMultiple(of: 2) else { return nil }
         return data
