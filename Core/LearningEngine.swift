@@ -47,8 +47,8 @@ public enum LearningEngine {
                   !word.form.isEmpty, !word.quote.isEmpty,
                   passage.text.localizedCaseInsensitiveContains(word.quote),
                   word.quote.localizedCaseInsensitiveContains(word.form) else { return nil }
-            let refs = passage.fragments.filter { word.sourceIDs.contains($0.id) }.map(\.text).joined()
-            guard refs.localizedCaseInsensitiveContains(word.quote) else { return nil }
+            let sourceTexts = passage.fragments.filter { word.sourceIDs.contains($0.id) }.map(\.text)
+            guard Transcript.join(sourceTexts).localizedCaseInsensitiveContains(word.quote) || sourceTexts.joined().localizedCaseInsensitiveContains(word.quote) else { return nil }
             var result = word
             if result.kind == .independent {
                 // A visible meaning or immediate imitation is supporting evidence, never independent recall.
@@ -56,7 +56,7 @@ public enum LearningEngine {
                     $0.speaker == .assistant && $0.startMS <= passage.startMS && passage.startMS - $0.endMS < 90_000 &&
                     $0.text.localizedCaseInsensitiveContains(word.form)
                 }
-                if passage.fragments.contains(where: { $0.meaningVisible || $0.typed }) || recentlyModeled { result.kind = .assisted }
+                if passage.fragments.contains(where: { $0.meaningVisible || $0.typed || $0.readingVisible == true }) || recentlyModeled { result.kind = .assisted }
             }
             return result
         }
@@ -72,7 +72,7 @@ public enum LearningEngine {
         for session in sessions.filter({ $0.languageID == languageID }).sorted(by: { $0.startedAt < $1.startedAt }) {
             var seen = Set<String>()
             for raw in session.assessments.sorted(by: { $0.createdAt < $1.createdAt }) {
-                guard seen.insert(raw.passageID).inserted, let a = validate(raw, session: session) else { continue }
+                guard let a = validate(raw, session: session), seen.insert(raw.passageID).inserted else { continue }
                 count += 1
                 if a.outcome == .breakdown { level = max(0, level - 1); successes = 0 }
                 else if a.outcome == .success {
@@ -84,7 +84,7 @@ public enum LearningEngine {
                     capabilityEvidence[a.capability, default: []].insert("\(calendar.startOfDay(for: a.createdAt))|\(a.context)")
                 }
                 var seenWords = Set<String>()
-                for word in a.words where !hiddenWords.contains(word.key) && seenWords.insert(word.key).inserted {
+                for word in a.words where !hiddenWords.contains(where: { VocabularyIdentity.hidden($0, matches: word) }) && seenWords.insert(word.key).inserted {
                     events[word.key, default: []].append((word, a.createdAt, a.context))
                 }
             }

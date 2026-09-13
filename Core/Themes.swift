@@ -1,6 +1,12 @@
 import Foundation
 
 public struct ConversationTheme: Identifiable, Hashable, Sendable {
+    static func culturalOverrides(_ content: [String: (String, String)]) -> [String: Self] {
+        Dictionary(uniqueKeysWithValues: shared.compactMap { base in
+            guard let (title, situation) = content[base.id] else { return nil }
+            return (base.id, Self(base.id, title, base.subtitle, base.symbol, base.category, situation, base.colorIndex))
+        })
+    }
     public var id: String
     public var title: String
     public var subtitle: String

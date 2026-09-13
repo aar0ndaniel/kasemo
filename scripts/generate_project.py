@@ -29,7 +29,7 @@ def encode(value):
 
 sources, refs = [], []
 for file in sorted((root/'App').rglob('*.swift')):
-    path = str(file.relative_to(root))
+    path = file.relative_to(root).as_posix()
     ref = add(path, 'PBXFileReference', lastKnownFileType='sourcecode.swift', path=path, sourceTree='<group>')
     refs.append(ref); sources.append(add(path+'build','PBXBuildFile',fileRef=ref))
 asset = add('assets','PBXFileReference',lastKnownFileType='folder.assetcatalog',path='App/Assets.xcassets',sourceTree='<group>')

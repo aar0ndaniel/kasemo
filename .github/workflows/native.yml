@@ -1,0 +1,50 @@
+name: Native validation
+on:
+  workflow_dispatch:
+  push:
+    branches: ['tarkitey/languages-conversation-fallback']
+  pull_request:
+    paths: ['App/**', 'Core/**', 'Tests/**', 'UITests/**', 'scripts/**', 'Mural.xcodeproj/**', '.github/workflows/native.yml']
+permissions:
+  contents: read
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          uname -m
+          xcodebuild -showsdks
+      - name: Core tests
+        run: swift test
+      - name: Generated project is reproducible
+        run: |
+          python3 scripts/generate_project.py
+          git diff --exit-code -- Mural.xcodeproj
+      - name: Simulator build
+        run: xcodebuild -quiet -project Mural.xcodeproj -scheme Mural -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/DerivedData CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
+      - name: Device arm64 build
+        run: xcodebuild -quiet -project Mural.xcodeproj -scheme Mural -configuration Release -destination 'generic/platform=iOS' -derivedDataPath .build/DeviceData CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
+      - name: Simulator UI tests
+        run: |
+          DEVICE=$(python3 scripts/ci_simulator.py)
+          echo "SIMULATOR_UDID=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcodebuild -quiet -project Mural.xcodeproj -scheme Mural -destination "platform=iOS Simulator,id=$DEVICE,arch=arm64" -derivedDataPath .build/DerivedData -resultBundlePath .build/NativeTests.xcresult CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -parallel-testing-enabled NO test
+      - name: Save native test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-test-results
+          path: .build/NativeTests.xcresult
+          if-no-files-found: ignore

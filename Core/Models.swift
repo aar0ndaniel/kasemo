@@ -15,6 +15,7 @@ public struct Fragment: Codable, Identifiable, Equatable, Sendable {
     public var receivedAt: Date
     public var meaningVisible: Bool
     public var typed: Bool
+    public var readingVisible: Bool?
     public init(id: String = UUID().uuidString, speaker: Speaker, text: String, startMS: Int, endMS: Int, receivedAt: Date = .now, meaningVisible: Bool = false, typed: Bool = false) {
         self.id = id; self.speaker = speaker; self.text = text; self.startMS = startMS
         self.endMS = endMS; self.receivedAt = receivedAt; self.meaningVisible = meaningVisible; self.typed = typed
@@ -25,13 +26,26 @@ public struct Passage: Identifiable, Sendable {
     public var id: String
     public var speaker: Speaker
     public var fragments: [Fragment]
-    public var text: String { fragments.map(\.text).joined() }
+    public var text: String { Transcript.join(fragments.map(\.text)) }
     public var revisionKey: String { fragments.map { "\($0.id):\($0.revision)" }.joined(separator: ",") }
     public var startMS: Int { fragments.first?.startMS ?? 0 }
     public var endMS: Int { fragments.map(\.endMS).max() ?? 0 }
 }
 
 public enum Transcript {
+    /// Provider deltas already carry whitespace. Add only a missing boundary between full responses;
+    /// preserve punctuation and unspaced Japanese writing.
+    public static func join(_ pieces: [String]) -> String {
+        pieces.reduce("") { accumulated, next in
+            guard let last = accumulated.last, let first = next.first else { return accumulated + next }
+            let closing = ".,!?;:…。，！？、）)]}»”’"
+            let opening = "（([{«“‘"
+            let japanese = { (c: Character) in c.unicodeScalars.contains { (0x3040...0x30ff).contains($0.value) || (0x3400...0x9fff).contains($0.value) || (0xff00...0xffef).contains($0.value) } }
+            let separator = !last.isWhitespace && !first.isWhitespace && !closing.contains(first) && !opening.contains(last)
+                && !japanese(last) && !japanese(first) && ".!?…".contains(last) ? " " : ""
+            return accumulated + separator + next
+        }
+    }
     /// Presentation grouping only: neither the gap nor the arrival of another speaker proves a completed turn.
     public static func passages(_ fragments: [Fragment]) -> [Passage] {
         var result: [Passage] = []
@@ -60,11 +74,12 @@ public struct WordProposal: Codable, Sendable {
     public var sourceIDs: [String]
     public var quote: String
     public var language: String
+    public var senseID: String?
     public init(lemma: String, meaning: String, form: String, kind: EvidenceKind, confidence: Double, sourceIDs: [String], quote: String, language: String = LanguageRegistry.defaultID) {
         self.lemma = lemma; self.meaning = meaning; self.form = form; self.kind = kind
         self.confidence = confidence; self.sourceIDs = sourceIDs; self.quote = quote; self.language = language
     }
-    public var key: String { language + "|" + lemma.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "|" + meaning.lowercased() }
+    public var key: String { VocabularyIdentity.key(language: language, lemma: lemma, senseID: senseID) }
 }
 
 public struct Assessment: Codable, Identifiable, Sendable {
@@ -78,10 +93,11 @@ public struct Assessment: Codable, Identifiable, Sendable {
     public var words: [WordProposal]
     public var createdAt: Date
     public var context: String
+    public var completed: Bool?
     public init(passageID: String, revisionKey: String, outcome: Outcome, suggestedLevel: Int, nextGoal: String, capability: String, words: [WordProposal], createdAt: Date = .now, context: String = "free") {
         self.passageID = passageID; self.revisionKey = revisionKey; self.outcome = outcome
         self.suggestedLevel = suggestedLevel; self.nextGoal = nextGoal; self.capability = capability
-        self.words = words; self.createdAt = createdAt; self.context = context
+        self.words = words; self.createdAt = createdAt; self.context = context; self.completed = true
     }
 }
 
@@ -156,6 +172,13 @@ public struct Preferences: Codable, Sendable {
     public var interests = ""
     public var hasOnboarded = false
     public var aiConsentVersion: Int?
+    public var readingAidEnabled: Bool?
+    public var learnerName: String?
+    public var partnerName: String?
+    public var playfulTeaching: Bool?
+    public var supportLanguageBanter: Bool?
+    public var geminiFallbackEnabled: Bool?
+    public var geminiConsentVersion: Int?
     public init() {}
 }
 
