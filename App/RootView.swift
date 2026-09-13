@@ -74,7 +74,10 @@ struct TalkView: View {
     @Bindable var coordinator: ConversationCoordinator
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("talk_companion_mode") private var companionMode = false
+    @AppStorage("talk_companion_mode") private var companionMode = true
+    @GestureState private var touchingMascot = false
+    @State private var holdingMascot = false
+    @State private var microphoneLocked = false
     @State private var showingStreakCelebration = false
     @State private var typing = false
     @State private var transcript: SessionRecord?
@@ -107,6 +110,10 @@ struct TalkView: View {
                             }
                         }
                     }
+                    Text(coordinator.status).font(.system(.caption, design: .rounded)).foregroundStyle(MuralColor.secondary)
+                        .contentTransition(.numericText()).padding(.top, 6).padding(.bottom, 16).accessibilityAddTraits(.updatesFrequently)
+                        .accessibilityIdentifier("conversation-status")
+                    captionArea
                     let energy = max(coordinator.outputLevel, coordinator.inputLevel * 0.45)
                     ZStack {
                         if companionMode {
@@ -130,24 +137,41 @@ struct TalkView: View {
                             GhostMascotView(pose: pose, size: typeSize.isAccessibilitySize ? 140 : 175, animated: true, energy: energy)
                                 .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222)
                                 .contentShape(Rectangle())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                        companionMode = false
-                                    }
-                                }
                                 .accessibilityIdentifier("ghost-companion")
                         } else {
                             MuralOrb(energy: energy, listening: coordinator.state == .active && !coordinator.isMuted, active: coordinator.state != .closing)
                                 .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222)
                                 .contentShape(Circle())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                        companionMode = true
-                                    }
-                                }
+
+                        }
+                    }
+                    .scaleEffect(holdingMascot && !reduceMotion ? 1.05 : 1)
+                    .shadow(color: MuralColor.iris.opacity(holdingMascot || microphoneLocked ? 0.35 : 0), radius: 16)
+                    .contentShape(Rectangle())
+                    .gesture(mascotGesture)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Hold to talk")
+                    .accessibilityHint("Hold and slide right to lock the microphone on.")
+                    .accessibilityIdentifier("start-conversation")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction {
+                        if microphoneLocked { unlockMicrophone() }
+                        else { coordinator.beginPushToTalk(); microphoneLocked = coordinator.isRunning }
+                    }
+                    .overlay(alignment: .trailing) {
+                        if holdingMascot || microphoneLocked {
+                            Button { unlockMicrophone() } label: {
+                                Image(systemName: microphoneLocked ? "lock.fill" : "lock.open")
+                                    .frame(width: 48, height: 48).modifier(SoftGlass())
+                            }
+                            .accessibilityLabel("Unlock and mute microphone")
+                            .accessibilityIdentifier("microphone-lock")
                         }
                     }
                     .padding(.vertical, 6)
+                    Text(microphoneLocked ? "Microphone locked on · tap the padlock to mute" : "Hold to talk · slide right to lock")
+                        .font(.caption).foregroundStyle(MuralColor.secondary)
+                        .multilineTextAlignment(.center).padding(.bottom, 8)
 
                     Button {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -165,10 +189,6 @@ struct TalkView: View {
                     }
                     .accessibilityIdentifier("toggle-companion-mode")
                     .padding(.bottom, 2)
-                    Text(coordinator.status).font(.system(.caption, design: .rounded)).foregroundStyle(MuralColor.secondary)
-                        .contentTransition(.numericText()).padding(.top, 6).padding(.bottom, 16).accessibilityAddTraits(.updatesFrequently)
-                        .accessibilityIdentifier("conversation-status")
-                    captionArea
                     if let notice = coordinator.notice {
                         Text(notice).font(.footnote).foregroundStyle(MuralColor.secondary).multilineTextAlignment(.center).padding(.vertical, 12)
                     }
@@ -184,13 +204,55 @@ struct TalkView: View {
                     }.font(.caption).padding(.top, 4).padding(.bottom, 6)
             }.padding(.horizontal, 20).padding(.top, 10).frame(maxWidth: .infinity).background(MuralColor.cream)
         }
+        .onChange(of: touchingMascot) { _, touching in
+            if !touching { finishMascotHold() }
+        }
+        .onChange(of: coordinator.state) { _, state in
+            if state != .active && state != .connecting { microphoneLocked = false; holdingMascot = false }
+        }
+        .onDisappear { unlockMicrophone() }
         .sheet(isPresented: $typing) { TypedReplyView(coordinator: coordinator) }
+        .overlay(alignment: .top) {
+            if let toast = coordinator.providerToast {
+                Text(toast).font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 18).padding(.vertical, 12)
+                    .modifier(SoftGlass()).padding(.top, 8)
+                    .accessibilityIdentifier("provider-toast")
+                    .accessibilityAddTraits(.updatesFrequently)
+                    .allowsHitTesting(false)
+            }
+        }
         .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: coordinator.state)
         .task(id: coordinator.readingRequestID) { await coordinator.updateReadingAid() }
         .sheet(item: $transcript) { session in
             TranscriptView(session: session, meaningLanguage: coordinator.store.preferences.meaningLanguage)
         }
         .sheet(item: $lookup) { item in LookupView(item: item, coordinator: coordinator) }
+    }
+    private var mascotGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .updating($touchingMascot) { _, active, _ in active = true }
+            .onChanged { value in
+                guard coordinator.state != .closing else { return }
+                if !holdingMascot {
+                    holdingMascot = true
+                    coordinator.beginPushToTalk()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                if value.translation.width >= 72 && !microphoneLocked && coordinator.isRunning {
+                    microphoneLocked = true
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            }
+            .onEnded { _ in finishMascotHold() }
+    }
+    private func finishMascotHold() {
+        holdingMascot = false
+        if !microphoneLocked { coordinator.releasePushToTalk() }
+    }
+    private func unlockMicrophone() {
+        microphoneLocked = false; holdingMascot = false
+        coordinator.releasePushToTalk()
     }
     @ViewBuilder private var secondaryControls: some View {
                         if coordinator.state == .active {
@@ -205,12 +267,10 @@ struct TalkView: View {
     }
     private var captionArea: some View {
         VStack(spacing: 12) {
-            Text(linkedCaption).font(.system(coordinator.assistantPassage == nil ? .largeTitle : .title2, design: .rounded, weight: .medium))
-                .tracking(-0.5).multilineTextAlignment(.center).tint(MuralColor.ink)
-                .environment(\.openURL, OpenURLAction { url in
-                    guard url.scheme == "mural-word", let components = URLComponents(url: url, resolvingAgainstBaseURL: false), let word = components.queryItems?.first?.value else { return .discarded }
-                    lookup = WordLookup(word: word, sentence: coordinator.caption); return .handled
-                }).accessibilityIdentifier("target-caption")
+            if let user = coordinator.userPassage {
+                LearnerPassageView(passage: user, assessment: coordinator.session?.assessments.first { $0.passageID == user.id })
+                    .padding(.top, 6)
+            }
             if coordinator.readingEnabled {
                 if let reading = coordinator.reading {
                     VStack(spacing: 5) {
@@ -234,10 +294,12 @@ struct TalkView: View {
                     }.font(.caption).multilineTextAlignment(.center)
                 }
             }
-            if let user = coordinator.userPassage {
-                LearnerPassageView(passage: user, assessment: coordinator.session?.assessments.first { $0.passageID == user.id })
-                    .padding(.top, 6)
-            }
+            Text(linkedCaption).font(.system(coordinator.assistantPassage == nil ? .largeTitle : .title2, design: .rounded, weight: .medium))
+                .tracking(-0.5).multilineTextAlignment(.center).tint(MuralColor.ink)
+                .environment(\.openURL, OpenURLAction { url in
+                    guard url.scheme == "mural-word", let components = URLComponents(url: url, resolvingAgainstBaseURL: false), let word = components.queryItems?.first?.value else { return .discarded }
+                    lookup = WordLookup(word: word, sentence: coordinator.caption); return .handled
+                }).accessibilityIdentifier("target-caption")
             if coordinator.working { ProgressView("Checking that for you…").font(.caption).tint(MuralColor.secondary) }
             if let sources = coordinator.session?.topics.last?.sources, !sources.isEmpty {
                 Button("Sources", systemImage: "link") { transcript = coordinator.session }.font(.caption)
@@ -270,19 +332,6 @@ struct TalkView: View {
             }.buttonStyle(.plain)
                 .accessibilityLabel(coordinator.store.preferences.meaningVisible ? "Hide meaning subtitles" : "Show meaning subtitles")
                 .accessibilityValue(coordinator.store.preferences.meaningVisible ? "On" : "Off")
-            Button {
-                if coordinator.state == .active { coordinator.toggleMute() }
-                else if !coordinator.isRunning { coordinator.start() }
-            } label: {
-                ZStack {
-                    Circle().fill(LinearGradient(colors: [Color(red: 0.52, green: 0.46, blue: 0.94), MuralColor.iris], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    if coordinator.state == .connecting || coordinator.state == .closing { ProgressView().tint(MuralColor.ink) }
-                    else { Image(systemName: coordinator.isMuted && coordinator.state == .active ? "mic.slash" : "mic").font(.system(size: 28, weight: .regular)).contentTransition(.symbolEffect(.replace)) }
-                }.frame(width: 76, height: 76).shadow(color: MuralColor.iris.opacity(0.28), radius: 10, y: 6)
-            }.buttonStyle(.plain).padding(.bottom, 18)
-                .disabled(coordinator.state == .connecting || coordinator.state == .closing)
-                .accessibilityLabel(coordinator.state == .active ? (coordinator.isMuted ? "Unmute microphone" : "Mute microphone") : "Start conversation")
-                .accessibilityIdentifier("start-conversation")
             Button { if coordinator.isRunning { coordinator.end() } else { transcript = coordinator.session } } label: {
                 VStack(spacing: 6) {
                     Image(systemName: coordinator.isRunning ? "phone.down" : "text.bubble").frame(width: 48, height: 48).modifier(SoftGlass())

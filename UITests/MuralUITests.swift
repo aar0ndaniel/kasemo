@@ -1,6 +1,26 @@
 import XCTest
 
 final class MuralUITests: XCTestCase {
+    func testMascotHoldReleaseAndDragLock() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--preview", "--screenshot=conversation"]
+        app.launch()
+        let mascot = app.buttons["start-conversation"]
+        XCTAssertTrue(mascot.waitForExistence(timeout: 10))
+        let caption = app.staticTexts["target-caption"]
+        XCTAssertLessThan(app.staticTexts["meaning-caption"].frame.maxY, caption.frame.minY)
+        XCTAssertLessThan(caption.frame.maxY, mascot.frame.minY)
+        mascot.press(forDuration: 0.5)
+        XCTAssertEqual(app.staticTexts["microphone-status"].label, "Microphone muted")
+        let origin = mascot.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        origin.press(forDuration: 0.3, thenDragTo: origin.withOffset(CGVector(dx: 90, dy: 0)))
+        XCTAssertTrue(app.buttons["microphone-lock"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["microphone-status"].label, "Microphone on")
+        app.buttons["microphone-lock"].tap()
+        XCTAssertEqual(app.staticTexts["microphone-status"].label, "Microphone muted")
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Mascot push to talk"; capture.lifetime = .keepAlways; add(capture)
+    }
     private func launch(ended: Bool = false) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--preview"] + (ended ? ["--ended-conversation"] : [])
         app.launch(); return app
@@ -75,6 +95,9 @@ final class MuralUITests: XCTestCase {
         app.buttons["start-conversation"].tap()
         XCTAssertTrue(app.staticTexts["ai-consent-title"].waitForExistence(timeout: 5))
         app.buttons["ai-consent-agree"].tap()
+        // The initial hold has already ended. Consent must not reopen the mic.
+        XCTAssertTrue(app.buttons["start-conversation"].waitForExistence(timeout: 5))
+        app.buttons["start-conversation"].tap()
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
         app.buttons["Done"].tap()
         app.buttons["start-conversation"].tap()

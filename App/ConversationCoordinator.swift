@@ -21,6 +21,10 @@ import MuralCore
     private(set) var working = false
     var error: String?
     var notice: String?
+    private(set) var providerToast: String?
+    private var providerToastTask: Task<Void, Never>?
+    private var announcedProviders: Set<AIProvider> = []
+    private var previousVoiceProvider: AIProvider?
     var showSettings = false
     var showAIConsent = false
     private(set) var reading: JapaneseReading?
@@ -112,7 +116,7 @@ import MuralCore
         default: "Microphone off"
         }
     }
-    func start() {
+    func start(initiallyMuted: Bool = false) {
         guard !isRunning else { return }
         guard hasAIConsent else { startAfterConsent = true; showAIConsent = true; return }
         #if DEBUG
@@ -121,8 +125,9 @@ import MuralCore
         guard CredentialStore.hasKey || providerRouter.geminiAvailable else { showSettings = true; return }
         cancelReset(); meanings.reset()
         error = nil; notice = nil; lastAssessmentKey = ""
+        dismissProviderToast(); announcedProviders = []
         lastLanguageCheck = ""; pendingCommands = [:]
-        state = .connecting; isMuted = false
+        state = .connecting; isMuted = initiallyMuted
         var record = SessionRecord(languageID: language.id, themeID: selectedTheme?.id, title: selectedTheme?.title)
         if let pendingTopic { record.topics = [pendingTopic] }
         session = record; conversationStartedAt = record.startedAt; store.save(record)
@@ -133,7 +138,7 @@ import MuralCore
         let instructions = TeachingPolicy.voice(language: language, learner: learner, theme: selectedTheme, interests: store.preferences.interests, meaningLanguage: store.preferences.meaningLanguage, style: conversationStyle)
         connectionTask = Task { [weak self] in
             guard let self else { return }
-            do { try await self.transport.connect(api: self.api, instructions: instructions, history: history) }
+            do { try await self.transport.connect(api: self.api, instructions: instructions, history: history, initiallyMuted: initiallyMuted) }
             catch is CancellationError { return }
             catch {
                 guard self.session?.id == generation, self.state == .connecting || self.state == .active else { return }
@@ -184,7 +189,33 @@ import MuralCore
     }
     func toggleMute() {
         guard state == .active else { return }
-        isMuted.toggle(); transport.mute(isMuted)
+        setMuted(!isMuted)
+    }
+    func setMuted(_ muted: Bool) {
+        guard state == .active || state == .connecting else { return }
+        isMuted = muted; transport.mute(muted)
+    }
+    func beginPushToTalk() {
+        if !isRunning { start(initiallyMuted: true) }
+        setMuted(false)
+    }
+    func releasePushToTalk() {
+        startAfterConsent = false
+        setMuted(true)
+    }
+    private func dismissProviderToast() {
+        providerToastTask?.cancel(); providerToastTask = nil; providerToast = nil
+    }
+    private func announceProvider(_ provider: AIProvider) {
+        let restored = provider == .openAI && previousVoiceProvider == .gemini
+        previousVoiceProvider = provider
+        guard provider == .gemini || restored, announcedProviders.insert(provider).inserted else { return }
+        dismissProviderToast()
+        providerToast = provider == .gemini ? "Using Gemini" : "OpenAI connected"
+        providerToastTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(4)) } catch { return }
+            self?.providerToast = nil
+        }
     }
     func deleteLearningData() {
         guard !isRunning else { return }
@@ -274,7 +305,7 @@ import MuralCore
                 session = SessionRecord(languageID: language.id, themeID: selectedTheme?.id, title: selectedTheme?.title)
             }
             state = .connecting
-            notice = "OpenAI is unavailable. Connecting to Gemini; your earlier conversation is saved. Please repeat anything that wasn’t answered."
+            notice = nil
         case "mural.provider.notice":
             notice = event["message"] as? String
         case "mural.session.created":
@@ -283,12 +314,14 @@ import MuralCore
         case "session.started":
             guard state == .connecting else { return }
             state = .active; lastActivity = .now
+            transport.mute(isMuted)
             session?.voiceProvider = transport.provider
-            if transport.provider == .gemini { notice = "Using Gemini. OpenAI will be checked when you start a later conversation; this conversation stays on Gemini." }
+            announceProvider(transport.provider)
             session?.providerID = (event["session"] as? [String: Any])?["id"] as? String
             append("instructions", TeachingPolicy.greeting(language: language))
             startDurationChecks(); save()
         case "session.input_transcript.delta", "session.output_transcript.delta":
+            dismissProviderToast()
             guard state == .active || state == .closing, let delta = event["delta"] as? String,
                   let start = event["start_ms"] as? Int, let end = event["end_ms"] as? Int, start >= 0, end >= start else { return }
             let speaker: Speaker = type == "session.input_transcript.delta" ? .user : .assistant
@@ -462,6 +495,7 @@ import MuralCore
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let problem = InputLimits.problem(text, limit: InputLimits.typedReply) { error = problem; return false }
         guard state == .active, let snapshot = session else { error = "Start a conversation before sending your reply."; return false }
+        dismissProviderToast()
         let offset = Int(Date().timeIntervalSince(snapshot.startedAt) * 1000)
         session?.append(Fragment(speaker: .user, text: clean, startMS: offset, endMS: offset + 1,
                                  meaningVisible: store.preferences.meaningVisible, typed: true))

@@ -20,7 +20,7 @@ enum ConnectionState: Equatable { case idle, connecting, active, closing, ended,
     private var ownsAudioActivation = false
     private var lastInput = 0.0, lastOutput = 0.0
 
-    func connect(api: APIClient, instructions: String, history: [[String: Any]]) async throws {
+    func connect(api: APIClient, instructions: String, history: [[String: Any]], initiallyMuted: Bool = false) async throws {
         disconnect()
         closing = false
         let token = UUID(); attempt = token
@@ -53,7 +53,7 @@ enum ConnectionState: Equatable { case idle, connecting, active, closing, ended,
         self.peer = peer
         let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: ["googEchoCancellation": "true", "googNoiseSuppression": "true", "googAutoGainControl": "true"]))
         let track = factory.audioTrack(with: source, trackId: "mural-microphone")
-        localTrack = track; isMuted = false
+        localTrack = track; isMuted = initiallyMuted; track.isEnabled = !initiallyMuted
         peer.add(track, streamIds: ["mural-audio"])
         let dataConfig = RTCDataChannelConfiguration(); dataConfig.isOrdered = true
         guard let channel = peer.dataChannel(forLabel: "oai-events", configuration: dataConfig) else { throw TransportError.connection }

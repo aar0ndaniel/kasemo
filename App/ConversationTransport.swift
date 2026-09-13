@@ -26,10 +26,10 @@ public enum TransportState: String, Sendable {
     private var instructions = ""
     private var history: [[String: Any]] = []
 
-    func connect(api: APIClient, instructions: String, history: [[String: Any]]) async throws {
+    func connect(api: APIClient, instructions: String, history: [[String: Any]], initiallyMuted: Bool = false) async throws {
         disconnect()
         self.api = api; self.instructions = instructions; self.history = history
-        let generation = UUID(); attempt = generation; closing = false; connecting = true; muted = false
+        let generation = UUID(); attempt = generation; closing = false; connecting = true; muted = initiallyMuted
         initialFailure = nil
         provider = api.router.shouldUseGemini(.voice) ? .gemini : .openAI
         bind(generation)
@@ -37,14 +37,14 @@ public enum TransportState: String, Sendable {
         if provider == .gemini {
             state = .geminiActive
             api.router.activeVoice = .gemini
-            try await gemini.connect(instructions: instructions)
+            try await gemini.connect(instructions: instructions, initiallyMuted: initiallyMuted)
             return
         }
         let recoveryGeneration = api.router.voice.failureGeneration
         do {
             state = .openAIActive
             api.router.activeVoice = .openAI
-            try await openAI.connect(api: api, instructions: instructions, history: history)
+            try await openAI.connect(api: api, instructions: instructions, history: history, initiallyMuted: initiallyMuted)
             guard attempt == generation, !Task.isCancelled else { throw CancellationError() }
             api.router.succeeded(.voice, generation: recoveryGeneration)
         } catch {
@@ -57,7 +57,7 @@ public enum TransportState: String, Sendable {
             guard api.router.geminiAvailable else { state = .idle; throw error }
             provider = .gemini; api.router.activeVoice = .gemini
             onEvent?(["type": "mural.provider.switching"])
-            try await gemini.connect(instructions: instructions)
+            try await gemini.connect(instructions: instructions, initiallyMuted: muted)
             state = .geminiActive
         }
     }
