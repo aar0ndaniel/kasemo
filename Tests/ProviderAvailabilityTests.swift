@@ -2,6 +2,24 @@ import XCTest
 @testable import MuralCore
 
 final class ProviderAvailabilityTests: XCTestCase {
+    func testGeminiConnectionUsesEncodedQueryAuthentication() throws {
+        let key = "test&key=with+reserved?characters"
+        let url = try XCTUnwrap(GeminiWire.liveURL(key: key))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.scheme, "wss")
+        XCTAssertEqual(components.host, "generativelanguage.googleapis.com")
+        XCTAssertEqual(components.queryItems, [URLQueryItem(name: "key", value: key)])
+        XCTAssertEqual(GeminiWire.textModel, "gemini-2.5-flash")
+        XCTAssertEqual(GeminiWire.liveModel, "gemini-3.1-flash-live-preview")
+    }
+
+    func testGeminiOverloadRetryIsBoundedAndDoesNotRetryAuthentication() {
+        XCTAssertEqual(GeminiWire.retryModel(status: 503, attempt: 0), GeminiWire.textModel)
+        XCTAssertEqual(GeminiWire.retryModel(status: 503, attempt: 1), "gemini-3.5-flash")
+        XCTAssertNil(GeminiWire.retryModel(status: 503, attempt: 2))
+        XCTAssertNil(GeminiWire.retryModel(status: 403, attempt: 0))
+        XCTAssertNil(GeminiWire.retryModel(status: 429, attempt: 0))
+    }
     func testCooldownDoesNotClaimRecoveryAndStaleSuccessCannotOverrideFailure() {
         let now = Date(timeIntervalSince1970: 1000)
         var voice = ProviderAvailability(), text = ProviderAvailability()

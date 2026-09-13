@@ -18,6 +18,7 @@ import MuralCore
     private var playbackGeneration = UUID()
     private var attempt = UUID()
     private var ready = false
+    private var connectionError: GeminiError?
     private var muted = false
     private var closing = true
     private var startedAt = Date()
@@ -30,13 +31,12 @@ import MuralCore
         guard let key = GeminiCredentialStore.read() else { throw GeminiError.missingKey }
         guard await AVAudioApplication.requestRecordPermission() else { throw LiveTransport.TransportError.microphone }
         try Task.checkCancellation()
-        let generation = UUID(); attempt = generation; closing = false; ready = false
+        let generation = UUID(); attempt = generation; closing = false; ready = false; connectionError = nil
         let config = URLSessionConfiguration.ephemeral
         config.httpCookieStorage = nil; config.urlCache = nil; config.timeoutIntervalForRequest = 30
         let session = URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil); self.session = session
-        // Keep the user's key in a header, never a logged URL or exported record.
-        var request = URLRequest(url: URL(string: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent")!)
-        request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        guard let url = GeminiWire.liveURL(key: key) else { throw GeminiError.invalidKey }
+        let request = URLRequest(url: url)
         let socket = session.webSocketTask(with: request); socket.maximumMessageSize = 8_000_000; self.socket = socket
         socket.resume()
         do {
@@ -59,7 +59,7 @@ import MuralCore
             let deadline = Date().addingTimeInterval(25)
             while !ready {
                 try await Task.sleep(for: .milliseconds(80))
-                guard attempt == generation, !closing else { throw GeminiError.connection }
+                guard attempt == generation, !closing else { throw connectionError ?? GeminiError.connection }
                 guard Date() < deadline else { throw GeminiError.timeout }
             }
             try Task.checkCancellation()
@@ -104,10 +104,11 @@ import MuralCore
         engine = nil; queuedFrames = 0; playbackGeneration = UUID(); outputLevel = 0
         onLevels?(0, 0)
     }
-    private func fail() {
+    private func fail(_ error: GeminiError = .connection) {
         let wasReady = ready
+        connectionError = error
         disconnect()
-        if wasReady { onFailure?(GeminiError.connection.localizedDescription) }
+        if wasReady { onFailure?(error.localizedDescription) }
     }
     @discardableResult private func enqueue(_ json: [String: Any]) -> Bool {
         guard ready, !closing, let data = try? JSONSerialization.data(withJSONObject: json) else { return false }
@@ -185,7 +186,12 @@ import MuralCore
     }
     private func receive(_ json: [String: Any]) {
         if json["setupComplete"] != nil { ready = true; return }
-        if json["error"] != nil { fail(); return }
+        if let error = json["error"] as? [String: Any] {
+            let message = error["message"] as? String ?? "The voice request was rejected."
+            // Provider errors can echo request details. Never display the credential.
+            let safe = GeminiCredentialStore.read().map { message.replacingOccurrences(of: $0, with: "[redacted]") } ?? message
+            fail(.server(String(safe.prefix(500)))); return
+        }
         if let calls = (json["toolCall"] as? [String: Any])?["functionCalls"] as? [[String: Any]] {
             for call in calls where call["name"] as? String == "mural_lookup" {
                 if let id = call["id"] as? String { onEvent?(["type": "session.delegation.created", "delegation": ["id": id, "target": "client"]]) }

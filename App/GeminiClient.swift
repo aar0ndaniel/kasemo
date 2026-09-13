@@ -31,7 +31,7 @@ enum GeminiCredentialStore {
 }
 
 enum GeminiError: LocalizedError {
-    case invalidKey, missingKey, keychain, incomplete, http(Int), connection, audio, timeout
+    case invalidKey, missingKey, keychain, incomplete, http(Int), connection, audio, timeout, server(String)
     var errorDescription: String? {
         switch self {
         case .invalidKey: "Enter a valid Gemini API key."
@@ -44,13 +44,14 @@ enum GeminiError: LocalizedError {
         case .connection: "The Gemini voice connection ended. Your conversation is saved."
         case .audio: "Gemini audio couldn’t start on this audio route. Check the microphone and try again."
         case .timeout: "Gemini took too long to connect. Please try again."
+        case .server(let message): "Gemini: \(message)"
         }
     }
 }
 
 @MainActor final class GeminiClient {
-    static let textModel = "gemini-3.5-flash"
-    static let liveModel = "gemini-3.1-flash-live-preview"
+    static let textModel = GeminiWire.textModel
+    static let liveModel = GeminiWire.liveModel
     private let session: URLSession
     init() {
         let config = URLSessionConfiguration.ephemeral
@@ -69,7 +70,17 @@ enum GeminiError: LocalizedError {
         request.httpMethod = "POST"; request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: request)
+        var result = try await session.data(for: request)
+        var retry = 0
+        while let http = result.1 as? HTTPURLResponse,
+              let model = GeminiWire.retryModel(status: http.statusCode, attempt: retry) {
+            try await Task.sleep(for: .seconds(retry + 1))
+            try Task.checkCancellation()
+            request.url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
+            result = try await session.data(for: request)
+            retry += 1
+        }
+        let (data, response) = result
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw GeminiError.incomplete }
         guard (200..<300).contains(http.statusCode) else { throw GeminiError.http(http.statusCode) }

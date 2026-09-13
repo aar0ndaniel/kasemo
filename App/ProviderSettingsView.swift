@@ -19,7 +19,8 @@ struct ProviderSettingsView: View {
                 Button(hasKey ? "Save replacement Gemini key" : "Save Gemini key") {
                     do {
                         try GeminiCredentialStore.save(key); key = ""; hasKey = true
-                        coordinator.providerRouter.invalidate(); message = "Saved in this iPhone’s Keychain. Enable fallback below to use it."
+                        store.updatePreferences { $0.geminiFallbackEnabled = true; $0.geminiConsentVersion = 1 }
+                        coordinator.providerRouter.invalidate(); message = "Saved in this iPhone’s Keychain. Gemini fallback is enabled."
                     } catch { message = error.localizedDescription }
                 }.disabled(key.isEmpty || coordinator.isRunning)
                 if hasKey {

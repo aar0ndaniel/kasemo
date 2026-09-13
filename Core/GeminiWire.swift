@@ -2,6 +2,26 @@ import Foundation
 
 /// Gemini's wire format stays separate from OpenAI's data-channel events.
 public enum GeminiWire {
+    public static let textModel = "gemini-2.5-flash"
+    public static let liveModel = "gemini-3.1-flash-live-preview"
+
+    /// Never log this URL: Google's WebSocket gateway authenticates via its query.
+    public static func liveURL(key: String) -> URL? {
+        var components = URLComponents(string: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent")
+        components?.queryItems = [URLQueryItem(name: "key", value: key)]
+        return components?.url
+    }
+
+    /// Retry overload once, then try another supported model. Authentication and
+    /// quota errors must be shown immediately, rather than generating more traffic.
+    public static func retryModel(status: Int, attempt: Int) -> String? {
+        guard status == 503 else { return nil }
+        switch attempt {
+        case 0: return textModel
+        case 1: return "gemini-3.5-flash"
+        default: return nil
+        }
+    }
     public static func setup(model: String, instructions: String) -> [String: Any] {
         let modelIdentifier = model.hasPrefix("models/") ? model : "models/" + model
         return [
