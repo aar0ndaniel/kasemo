@@ -34,6 +34,30 @@ jobs:
         run: xcodebuild -quiet -project Mural.xcodeproj -scheme Mural -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/DerivedData CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
       - name: Device arm64 build
         run: xcodebuild -quiet -project Mural.xcodeproj -scheme Mural -configuration Release -destination 'generic/platform=iOS' -derivedDataPath .build/DeviceData CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
+      - name: Package IPA
+        run: |
+          mkdir -p .build/Payload
+          cp -r .build/DeviceData/Build/Products/Release-iphoneos/Mural.app .build/Payload/
+          cd .build
+          zip -qr Mural.ipa Payload
+          cd ..
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Mural-iOS-IPA
+          path: .build/Mural.ipa
+          if-no-files-found: error
+      - name: Package Simulator App
+        run: |
+          cd .build/DerivedData/Build/Products/Debug-iphonesimulator
+          zip -qr ../../../../Mural-Simulator.app.zip Mural.app
+          cd ../../../..
+      - name: Upload Simulator App Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Mural-Simulator-App
+          path: Mural-Simulator.app.zip
+          if-no-files-found: ignore
       - name: Simulator UI tests
         run: |
           DEVICE=$(python3 scripts/ci_simulator.py)
