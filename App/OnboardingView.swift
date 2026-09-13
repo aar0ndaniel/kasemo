@@ -44,8 +44,14 @@ struct OnboardingView: View {
 
             ScrollView {
                 VStack(spacing: step == 0 ? 22 : 18) {
-                    VStack(spacing: 4) {
-                        MuralOrb().frame(height: typeSize.isAccessibilitySize ? 80 : step == 0 ? 134 : 74)
+                    VStack(spacing: 6) {
+                        if step == 0 {
+                            GhostMascotView(pose: .wave, size: typeSize.isAccessibilitySize ? 70 : 96)
+                                .frame(height: typeSize.isAccessibilitySize ? 80 : 124)
+                                .padding(.bottom, 2)
+                        } else {
+                            MuralOrb().frame(height: typeSize.isAccessibilitySize ? 80 : 74)
+                        }
                         Text(step == 0 ? (LanguageRegistry.all[greetingIndex].greetingWord) : target.greetingWord)
                             .font(.system(size: typeSize.isAccessibilitySize ? 46 : step == 0 ? 60 : 48, weight: .medium, design: .rounded))
                             .tracking(-1).minimumScaleFactor(0.5).lineLimit(1).id(greeting)
@@ -184,9 +190,14 @@ struct AIConsentView: View {
     let decline: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Image(systemName: "waveform.bubble").font(.system(size: 32, weight: .light)).foregroundStyle(MuralColor.iris)
-            Text("Before we talk.").font(.system(.title, design: .rounded, weight: .semibold))
-                .accessibilityIdentifier("ai-consent-title")
+            HStack(alignment: .center, spacing: 14) {
+                GhostMascotView(pose: .neutral, size: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    Image(systemName: "waveform.bubble").font(.system(size: 22, weight: .light)).foregroundStyle(MuralColor.iris)
+                    Text("Before we talk.").font(.system(.title2, design: .rounded, weight: .semibold))
+                        .accessibilityIdentifier("ai-consent-title")
+                }
+            }
             Text(AIProcessingConsent.summary).font(.body)
             Text("Your learning record is stored on this iPhone. Kpo o does not save raw audio. You can keep browsing your saved words and conversations without agreeing.")
                 .font(.subheadline).foregroundStyle(MuralColor.secondary)

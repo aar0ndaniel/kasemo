@@ -34,7 +34,13 @@ struct ThemesView: View {
                     ForEach(themes) { theme in
                         Button { if theme.id == "today" { current = true } else { choose(theme) } } label: {
                             VStack(alignment: .leading, spacing: 28) {
-                                Image(systemName: theme.symbol).font(.system(size: 28, weight: .light)).foregroundStyle(MuralColor.secondary)
+                                HStack {
+                                    Image(systemName: theme.symbol).font(.system(size: 28, weight: .light)).foregroundStyle(MuralColor.secondary)
+                                    Spacer()
+                                    if theme.id.localizedCaseInsensitiveContains("cafe") || theme.id.localizedCaseInsensitiveContains("coffee") || theme.symbol.contains("cup") {
+                                        GhostMascotView(pose: .coffee, size: 36, animated: false)
+                                    }
+                                }
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(theme.title).font(.system(.headline, design: .rounded))
                                     Text(theme.subtitle).font(.caption).foregroundStyle(MuralColor.secondary)
@@ -101,10 +107,14 @@ struct WordsView: View {
                 PageHeading(eyebrow: "Little by little · \(coordinator.language.name)", title: "Your words.", subtitle: "Familiar words, ready for another conversation.")
                 if words.isEmpty {
                     VStack(alignment: .leading, spacing: 18) {
-                        Image(systemName: "leaf").font(.system(size: 34, weight: .light))
-                        Text(search.isEmpty ? "They’ll grow from here." : "No matching words yet.").font(.system(.title2, design: .rounded, weight: .medium))
-                        Text(search.isEmpty ? "As we talk, useful words and phrases find a home here. Their strength grows when you recall them over time." : "Try another \(coordinator.language.name) word or English meaning.").font(.subheadline).foregroundStyle(MuralColor.secondary)
-                    }.padding(26).frame(maxWidth: .infinity, alignment: .leading).background(MuralColor.sage, in: RoundedRectangle(cornerRadius: 28))
+                        HStack(alignment: .top, spacing: 16) {
+                            GhostMascotView(pose: .reading, size: 72)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(search.isEmpty ? "They’ll grow from here." : "No matching words yet.").font(.system(.title2, design: .rounded, weight: .semibold))
+                                Text(search.isEmpty ? "As we talk, useful words and phrases find a home here. Their strength grows when you recall them over time." : "Try another \(coordinator.language.name) word or English meaning.").font(.subheadline).foregroundStyle(MuralColor.secondary)
+                            }
+                        }
+                    }.padding(24).frame(maxWidth: .infinity, alignment: .leading).background(MuralColor.sage, in: RoundedRectangle(cornerRadius: 28))
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(words) { word in
@@ -149,6 +159,18 @@ struct WordDetailView: View {
                 Text(word.lemma).font(.system(.largeTitle, design: .rounded, weight: .medium))
                 Text(word.meaning).font(.title3).foregroundStyle(MuralColor.secondary)
                 HStack { RecallBars(count: word.bars); Text(word.label).font(.subheadline) }
+                if word.bars == 3 {
+                    HStack(spacing: 12) {
+                        GhostMascotView(pose: .jump, size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Steady Spoken Recall!").font(.system(.subheadline, design: .rounded, weight: .semibold)).foregroundStyle(MuralColor.ink)
+                            Text("You've recalled and spoken this word reliably across conversations.").font(.caption).foregroundStyle(MuralColor.secondary)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MuralColor.butter.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
+                }
                 Text(word.explanation).font(.body)
                 Text("“\(word.example)”").font(.system(.title3, design: .rounded)).padding(20).frame(maxWidth: .infinity, alignment: .leading).background(MuralColor.peach, in: RoundedRectangle(cornerRadius: 22))
                 Text("\(word.independentCount) independent uses · Last seen \(word.lastSeen.formatted(date: .abbreviated, time: .omitted))").font(.footnote).foregroundStyle(MuralColor.secondary)
@@ -210,7 +232,22 @@ struct SessionHistoryView: View {
     var body: some View {
         NavigationStack {
             List {
-                if store.learningSessions.isEmpty { Text("Your \(store.language.name) conversations will appear here.").foregroundStyle(MuralColor.secondary) }
+                if store.learningSessions.isEmpty {
+                    VStack(spacing: 16) {
+                        GhostMascotView(pose: .wave, size: 76)
+                        Text("Your \(store.language.name) conversations will appear here.")
+                            .font(.system(.headline, design: .rounded))
+                            .foregroundStyle(MuralColor.ink)
+                            .multilineTextAlignment(.center)
+                        Text("Start speaking whenever you're ready. Every conversation helps you build natural confidence.")
+                            .font(.subheadline)
+                            .foregroundStyle(MuralColor.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 32)
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                }
                 ForEach(store.learningSessions) { session in
                     Button { selected = session } label: {
                         VStack(alignment: .leading, spacing: 6) {

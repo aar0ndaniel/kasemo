@@ -74,6 +74,8 @@ struct TalkView: View {
     @Bindable var coordinator: ConversationCoordinator
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("talk_companion_mode") private var companionMode = false
+    @State private var showingStreakCelebration = false
     @State private var typing = false
     @State private var transcript: SessionRecord?
     @State private var lookup: WordLookup?
@@ -87,19 +89,82 @@ struct TalkView: View {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         let streak = DailyStreak.project(coordinator.store.sessions, languageID: coordinator.language.id, now: context.date)
                         if streak.currentStreak > 0 {
-                            Label {
-                                Text("\(streak.currentStreak) \(streak.currentStreak == 1 ? "day" : "days")")
-                            } icon: {
-                                StreakIcon(size: 14)
-                            }
+                            Button {
+                                showingStreakCelebration = true
+                            } label: {
+                                Label {
+                                    Text("\(streak.currentStreak) \(streak.currentStreak == 1 ? "day" : "days")")
+                                } icon: {
+                                    StreakIcon(size: 14)
+                                }
                                 .font(.caption).foregroundStyle(MuralColor.ink).padding(.horizontal, 12).padding(.vertical, 6)
                                 .modifier(SoftGlass(tint: MuralColor.butter.opacity(0.5))).padding(.top, 8)
-                                .accessibilityLabel("\(coordinator.language.name) streak: \(streak.currentStreak) days. Longest: \(streak.longestStreak) days.")
-                                .accessibilityIdentifier("daily-streak")
+                            }
+                            .accessibilityLabel("\(coordinator.language.name) streak: \(streak.currentStreak) days. Longest: \(streak.longestStreak) days.")
+                            .accessibilityIdentifier("daily-streak")
+                            .sheet(isPresented: $showingStreakCelebration) {
+                                StreakCelebrationSheet(streak: streak, languageName: coordinator.language.name)
+                            }
                         }
                     }
-                    MuralOrb(energy: max(coordinator.outputLevel, coordinator.inputLevel * 0.45), listening: coordinator.state == .active && !coordinator.isMuted, active: coordinator.state != .closing)
-                        .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222).padding(.vertical, 8)
+                    let energy = max(coordinator.outputLevel, coordinator.inputLevel * 0.45)
+                    ZStack {
+                        if companionMode {
+                            let pose: GhostPose = {
+                                if coordinator.state == .connecting {
+                                    return .tiltRight
+                                } else if coordinator.state == .active {
+                                    if coordinator.outputLevel > 0.02 {
+                                        return .happy
+                                    } else if coordinator.inputLevel > 0.02 {
+                                        return .tiltLeft
+                                    } else {
+                                        return .neutral
+                                    }
+                                } else if coordinator.state == .closing {
+                                    return .sleepy
+                                } else {
+                                    return coordinator.session == nil ? .wave : .neutral
+                                }
+                            }()
+                            GhostMascotView(pose: pose, size: typeSize.isAccessibilitySize ? 140 : 175, animated: true, energy: energy)
+                                .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        companionMode = false
+                                    }
+                                }
+                                .accessibilityIdentifier("ghost-companion")
+                        } else {
+                            MuralOrb(energy: energy, listening: coordinator.state == .active && !coordinator.isMuted, active: coordinator.state != .closing)
+                                .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222)
+                                .contentShape(Circle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        companionMode = true
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.vertical, 6)
+
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            companionMode.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: companionMode ? "circle.hexagongrid.circle" : "sparkles")
+                            Text(companionMode ? "Orb view" : "Companion mode")
+                        }
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(MuralColor.secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(MuralColor.peach.opacity(0.4), in: Capsule())
+                    }
+                    .accessibilityIdentifier("toggle-companion-mode")
+                    .padding(.bottom, 2)
                     Text(coordinator.status).font(.system(.caption, design: .rounded)).foregroundStyle(MuralColor.secondary)
                         .contentTransition(.numericText()).padding(.top, 6).padding(.bottom, 16).accessibilityAddTraits(.updatesFrequently)
                         .accessibilityIdentifier("conversation-status")
@@ -309,8 +374,14 @@ struct TypedReplyView: View {
     @FocusState private var focused: Bool
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Say it your way.").font(.system(.title, design: .rounded, weight: .semibold))
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .center, spacing: 14) {
+                    GhostMascotView(pose: .writing, size: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Say it your way.").font(.system(.title2, design: .rounded, weight: .semibold))
+                        Text("Type in \(coordinator.language.name) or your native tongue.").font(.caption).foregroundStyle(MuralColor.secondary)
+                    }
+                }
                 TextField("Reply in \(coordinator.language.name) or another language", text: $text, axis: .vertical).lineLimit(3...6).focused($focused).padding(18).background(.white, in: RoundedRectangle(cornerRadius: 22))
                     .accessibilityIdentifier("typed-reply-field")
                 InputCountView(text: text, limit: InputLimits.typedReply)
@@ -327,3 +398,103 @@ struct TypedReplyView: View {
         }.presentationDetents([.medium, .large]).onAppear { focused = true }
     }
 }
+
+struct StreakCelebrationSheet: View {
+    let streak: DailyStreak
+    let languageName: String
+    @Environment(\.dismiss) private var dismiss
+    
+    private var nextMilestone: Int {
+        let targets = [3, 7, 14, 30, 60, 100, 365]
+        return targets.first { $0 > streak.currentStreak } ?? (streak.currentStreak + 10)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+                
+                GhostMascotView(
+                    pose: streak.currentStreak >= 7 ? .flying : .flame,
+                    size: 110,
+                    animated: true
+                )
+                
+                VStack(spacing: 8) {
+                    Text("\(streak.currentStreak) Day Streak!")
+                        .font(.system(.title, design: .rounded, weight: .bold))
+                        .foregroundStyle(MuralColor.ink)
+                    
+                    Text("You're speaking \(languageName) every day. Consistent daily practice forms natural conversational fluency.")
+                        .font(.subheadline)
+                        .foregroundStyle(MuralColor.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                }
+                
+                HStack(spacing: 16) {
+                    VStack(spacing: 6) {
+                        Text("\(streak.currentStreak)")
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                            .foregroundStyle(MuralColor.iris)
+                        Text("Current")
+                            .font(.caption2)
+                            .foregroundStyle(MuralColor.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+                    
+                    VStack(spacing: 6) {
+                        Text("\(streak.longestStreak)")
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                            .foregroundStyle(MuralColor.ink)
+                        Text("Best")
+                            .font(.caption2)
+                            .foregroundStyle(MuralColor.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+                    
+                    VStack(spacing: 6) {
+                        Text("\(nextMilestone) d")
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                            .foregroundStyle(MuralColor.butter)
+                        Text("Next Goal")
+                            .font(.caption2)
+                            .foregroundStyle(MuralColor.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.horizontal, 8)
+                
+                Spacer()
+                
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Keep it going!")
+                        .font(.system(.headline, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(MuralColor.iris, in: Capsule())
+                }
+                .accessibilityIdentifier("dismiss-streak-celebration")
+            }
+            .padding(26)
+            .background(MuralColor.cream)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
