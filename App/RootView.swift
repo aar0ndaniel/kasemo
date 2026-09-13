@@ -230,20 +230,69 @@ struct LookupView: View {
     let item: WordLookup
     let coordinator: ConversationCoordinator
     @State private var explanation: String?
+    @State private var reading: JapaneseReading?
     @State private var error: String?
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(item.word).font(.system(.largeTitle, design: .rounded, weight: .medium))
-                Text(item.sentence).font(.title3).foregroundStyle(MuralColor.secondary)
-                if let explanation { Text(explanation).font(.body).textSelection(.enabled) }
-                else if let error { Text(error).foregroundStyle(MuralColor.secondary) }
-                else { ProgressView("Finding the meaning…") }
-                Spacer()
-            }.padding(28).frame(maxWidth: .infinity, alignment: .leading).background(MuralColor.cream)
-                .navigationTitle("A little meaning").navigationBarTitleDisplayMode(.inline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(item.word).font(.system(.largeTitle, design: .rounded, weight: .medium))
+                    Text(item.sentence).font(.title3).foregroundStyle(MuralColor.secondary)
+                    if let reading {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Scripts & Pronunciation").font(.subheadline.weight(.semibold)).foregroundStyle(MuralColor.ink)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 8) { badges(for: reading) }
+                                VStack(alignment: .leading, spacing: 6) { badges(for: reading) }
+                            }
+                            if let guide = reading.spellingGuide {
+                                Text(guide).font(.footnote).foregroundStyle(MuralColor.secondary)
+                            }
+                            if let notes = reading.pronunciationNotes {
+                                Text(notes).font(.caption).foregroundStyle(MuralColor.secondary)
+                            }
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(MuralColor.peach, in: RoundedRectangle(cornerRadius: 18))
+                    }
+                    if let explanation { Text(explanation).font(.body).textSelection(.enabled) }
+                    else if let error { Text(error).foregroundStyle(MuralColor.secondary) }
+                    else { ProgressView("Finding the meaning…") }
+                    Spacer()
+                }.padding(28).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(MuralColor.cream)
+            .navigationTitle("A little meaning").navigationBarTitleDisplayMode(.inline)
         }.presentationDetents([.medium, .large])
-            .task { do { explanation = try await coordinator.lookup(word: item.word, sentence: item.sentence) } catch { self.error = error.localizedDescription } }
+            .task {
+                if coordinator.language.id == "ja" {
+                    Task { reading = await coordinator.lookupReading(word: item.word) }
+                }
+                do { explanation = try await coordinator.lookup(word: item.word, sentence: item.sentence) }
+                catch { self.error = error.localizedDescription }
+            }
+    }
+    @ViewBuilder private func badges(for reading: JapaneseReading) -> some View {
+        scriptBadge(label: "Kana", value: reading.kanaReading)
+        if let kanji = reading.kanjiForm, !kanji.isEmpty {
+            scriptBadge(label: "Kanji variant", value: kanji)
+        }
+        if let katakana = reading.katakanaTranscription, !katakana.isEmpty {
+            scriptBadge(label: "Katakana", value: katakana)
+        }
+        scriptBadge(label: "Hepburn", value: reading.romaji)
+        if let ascii = reading.asciiRomaji, !ascii.isEmpty {
+            scriptBadge(label: "Input", value: ascii)
+        }
+    }
+    @ViewBuilder private func scriptBadge(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption2).foregroundStyle(MuralColor.secondary)
+            Text(value).font(.subheadline.weight(.medium)).foregroundStyle(MuralColor.ink)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

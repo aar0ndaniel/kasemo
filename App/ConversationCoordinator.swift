@@ -30,7 +30,9 @@ import MuralCore
     var readingRequestID: String { "\(session?.id.uuidString ?? "greeting")|\(assistantPassage?.revisionKey ?? "")|\(readingEnabled)" }
     private var startAfterConsent = false
     private let api: APIClient
-    private let transport = LiveTransport()
+    let providerRouter: ProviderRouter
+    private let transport = ConversationTransport()
+    var voiceProvider: AIProvider { transport.provider }
     private var connectionTask: Task<Void, Never>?
     private var assessmentTask: Task<Void, Never>?
     private var delegationTasks: [String: Task<Void, Never>] = [:]
@@ -39,6 +41,7 @@ import MuralCore
     private var saveTask: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var lastActivity = Date()
+    private var conversationStartedAt: Date?
     private var lastLanguageCheck = ""
     private var pendingCommands: [String: Date] = [:]
     private var lastAssessmentKey = ""
@@ -50,7 +53,8 @@ import MuralCore
 
     init(store: LearningStore) {
         self.store = store
-        let api = APIClient(); self.api = api
+        let router = ProviderRouter(store: store); providerRouter = router
+        let api = APIClient(router: router); self.api = api
         finalAssessments = FinalAssessmentQueue { snapshot, passage in
             guard store.preferences.aiConsentVersion == AIProcessingConsent.version || AudioVerification.requested else { throw AIProcessingConsent.ConsentError.required }
             return try await Self.assess(api: api, snapshot: snapshot, passage: passage,
@@ -114,14 +118,14 @@ import MuralCore
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") { showSettings = true; return }
         #endif
-        guard CredentialStore.hasKey else { showSettings = true; return }
+        guard CredentialStore.hasKey || providerRouter.geminiAvailable else { showSettings = true; return }
         cancelReset(); meanings.reset()
         error = nil; notice = nil; lastAssessmentKey = ""
         lastLanguageCheck = ""; pendingCommands = [:]
         state = .connecting; isMuted = false
         var record = SessionRecord(languageID: language.id, themeID: selectedTheme?.id, title: selectedTheme?.title)
         if let pendingTopic { record.topics = [pendingTopic] }
-        session = record; store.save(record)
+        session = record; conversationStartedAt = record.startedAt; store.save(record)
         let generation = record.id
         let learner = store.learner
         // Each new conversation starts fresh; learned vocabulary and difficulty still carry forward.
@@ -174,7 +178,7 @@ import MuralCore
         if theme?.id != "current" { pendingTopic = nil }
         if state == .active {
             session?.themeID = theme?.id; session?.title = theme?.title ?? language.defaultTitle
-            append("instructions", TeachingPolicy.theme(theme, language: language))
+            append("instructions", TeachingPolicy.theme(theme, language: language, style: conversationStyle))
             save()
         }
     }
@@ -195,7 +199,7 @@ import MuralCore
     }
     func help() {
         guard state == .active else { return }
-        append("instructions", TeachingPolicy.help(language: language))
+        append("instructions", TeachingPolicy.help(language: language, style: conversationStyle, meaningLanguage: store.preferences.meaningLanguage))
         notice = "Mural will make that a little simpler."
     }
     func end(reason: String = "Ended by you") {
@@ -259,12 +263,28 @@ import MuralCore
     private func handle(_ event: [String: Any]) {
         guard let type = event["type"] as? String, session != nil else { return }
         switch type {
+        case "mural.provider.switching":
+            guard state == .active || state == .connecting else { return }
+            assessmentTask?.cancel(); durationTask?.cancel(); saveTask?.cancel(); saveTask = nil
+            delegationTasks.values.forEach { $0.cancel() }; delegationTasks.removeAll()
+            pendingCommands = [:]; working = false; meanings.reset(); reading = nil
+            if var previous = session, !previous.fragments.isEmpty || previous.providerID != nil {
+                previous.endedAt = .now; previous.endReason = "OpenAI unavailable; continued with Gemini"; previous.usageFinal = false
+                store.save(previous); finalAssessments.submit(previous)
+                session = SessionRecord(languageID: language.id, themeID: selectedTheme?.id, title: selectedTheme?.title)
+            }
+            state = .connecting
+            notice = "OpenAI is unavailable. Connecting to Gemini; your earlier conversation is saved. Please repeat anything that wasn’t answered."
+        case "mural.provider.notice":
+            notice = event["message"] as? String
         case "mural.session.created":
             session?.providerID = (event["session"] as? [String: Any])?["id"] as? String
             session?.voiceSeconds = 15; save()
         case "session.started":
             guard state == .connecting else { return }
             state = .active; lastActivity = .now
+            session?.voiceProvider = transport.provider
+            if transport.provider == .gemini { notice = "Using Gemini. OpenAI will be checked when you start a later conversation; this conversation stays on Gemini." }
             session?.providerID = (event["session"] as? [String: Any])?["id"] as? String
             append("instructions", TeachingPolicy.greeting(language: language))
             startDurationChecks(); save()
@@ -283,7 +303,7 @@ import MuralCore
             delegate(id: id)
         case "session.usage.updated", "session.closed":
             if let usage = event["usage"] as? [String: Any], let seconds = usage["seconds"] as? Double, seconds.isFinite, seconds >= 0 { session?.voiceSeconds = seconds }
-            if type == "session.closed" { session?.endReason = event["reason"] as? String; finish(final: true) }
+            if type == "session.closed" { session?.endReason = event["reason"] as? String; finish(final: event["usageConfirmed"] as? Bool ?? true) }
             else { scheduleSave() }
         case "error":
             let details = event["error"] as? [String: Any]
@@ -299,7 +319,7 @@ import MuralCore
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard let self, self.state == .active, let session = self.session else { return }
-                if Date().timeIntervalSince(session.startedAt) > Double(self.store.preferences.sessionMinutes * 60) {
+                if Date().timeIntervalSince(self.conversationStartedAt ?? session.startedAt) > Double(self.store.preferences.sessionMinutes * 60) {
                     self.notice = "You’ve reached your conversation time limit."; self.end(reason: "Time limit"); return
                 }
                 if Date().timeIntervalSince(self.lastActivity) > 120 {
@@ -423,7 +443,7 @@ import MuralCore
                 try await Task.sleep(for: .milliseconds(500))
                 guard self.session?.id == snapshot.id, self.state == .active, let current = self.session else { return }
                 guard let targetLanguage = LanguageRegistry.module(for: current.languageID) else { return }
-                let result = try await self.api.respond(instructions: TeachingPolicy.delegation(language: targetLanguage), input: TeachingPolicy.context(current), search: current.searchCalls < 3)
+                let result = try await self.api.respond(instructions: TeachingPolicy.delegation(language: targetLanguage, style: self.conversationStyle, meaningLanguage: self.store.preferences.meaningLanguage), input: TeachingPolicy.context(current), search: current.searchCalls < 3)
                 guard self.session?.id == snapshot.id, self.state == .active else { return }
                 self.addUsage(result.usage)
                 if !result.sources.isEmpty {
@@ -447,6 +467,12 @@ import MuralCore
                                  meaningVisible: store.preferences.meaningVisible, typed: true))
         save(); working = true
         defer { if session?.id == snapshot.id { working = false } }
+        if transport.provider == .gemini {
+            let accepted = transport.sendTyped(clean)
+            if !accepted { error = "Your typed reply is saved, but Gemini couldn’t receive it. Start a new conversation to reconnect." }
+            scheduleAssessment()
+            return true
+        }
         do {
             let result = try await api.respond(instructions: TeachingPolicy.typedReply(language: language, style: conversationStyle, meaningLanguage: store.preferences.meaningLanguage), input: TeachingPolicy.context(session!))
             guard session?.id == snapshot.id, state == .active else { return true }
@@ -465,11 +491,11 @@ import MuralCore
         do {
             try await Task.sleep(for: .milliseconds(900))
             let result = try await api.respond(instructions: JapaneseReading.guidance, input: passage.text,
-                schema: APIClient.object(["writing": APIClient.string, "reading": APIClient.string, "romaji": APIClient.string]))
+                schema: APIClient.japaneseReadingSchema)
             let candidate = try JSONDecoder().decode(JapaneseReading.self, from: Data(result.text.utf8))
             guard !Task.isCancelled, requestID == readingRequestID else { return }
-            guard candidate.writing == passage.text, !candidate.reading.isEmpty, !candidate.romaji.isEmpty,
-                  candidate.reading.count <= passage.text.count * 8 + 100, candidate.romaji.count <= passage.text.count * 16 + 100 else {
+            guard (candidate.surface == passage.text || candidate.writing == passage.text), !candidate.kanaReading.isEmpty, !candidate.romaji.isEmpty,
+                  candidate.kanaReading.count <= passage.text.count * 8 + 100, candidate.romaji.count <= passage.text.count * 16 + 100 else {
                 readingError = "A reliable reading isn’t available for this phrase."; return
             }
             reading = candidate; addUsage(result.usage); scheduleSave()
@@ -483,6 +509,16 @@ import MuralCore
         guard generation == languageGeneration else { throw CancellationError() }
         if session?.id == sessionID { addUsage(result.usage); scheduleSave() }
         return result.text
+    }
+    func lookupReading(word: String) async -> JapaneseReading? {
+        guard language.id == "ja" else { return nil }
+        if let current = reading, current.surface == word || current.writing == word { return current }
+        if word == "おはよう" || word == "お早う" { return .goodMorning }
+        guard hasAIConsent, !ProcessInfo.processInfo.arguments.contains("--preview") else { return nil }
+        do {
+            let result = try await api.respond(instructions: JapaneseReading.guidance, input: word, schema: APIClient.japaneseReadingSchema)
+            return try? JSONDecoder().decode(JapaneseReading.self, from: Data(result.text.utf8))
+        } catch { return nil }
     }
     func currentTopic(_ query: String) async throws -> TopicBrief {
         let targetLanguage = language, generation = languageGeneration

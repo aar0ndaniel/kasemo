@@ -358,16 +358,17 @@ struct SettingsView: View {
                 } header: { Text("Advanced") } footer: {
                     if !hasKey { Text("This version uses your OpenAI API key to start a conversation.") }
                 }
+                ProviderSettingsView(coordinator: coordinator)
                 Section {
                     Picker("Conversation limit", selection: Binding(get: { store.preferences.sessionMinutes }, set: { value in store.updatePreferences { $0.sessionMinutes = value } })) {
                         ForEach([5, 10, 15, 20, 30, 60], id: \.self) { Text("\($0) minutes").tag($0) }
                     }
                     LabeledContent("Recorded voice time", value: "\(Int(totalVoiceSeconds / 60)) min \(Int(totalVoiceSeconds) % 60) sec")
-                    LabeledContent("Voice estimate", value: String(format: "$%.2f USD", totalVoiceSeconds / 60 * 0.05))
+                    LabeledContent("OpenAI voice estimate", value: String(format: "$%.2f USD", store.sessions.filter { $0.voiceProvider != .gemini }.reduce(0) { $0 + $1.voiceSeconds } / 60 * 0.05))
                     LabeledContent("Search calls recorded", value: "\(store.sessions.reduce(0) { $0 + $1.searchCalls })")
                     Link("OpenAI usage and billing", destination: URL(string: "https://platform.openai.com/usage")!)
                 } header: { Text("Keep it comfortable") } footer: {
-                    Text("Voice estimate uses $0.05/min as of 11 September 2026. Translation, teaching and search cost extra. Interrupted requests can be billed without a usage record here. Your OpenAI dashboard is authoritative. The time limit is local, not a billing cap.")
+                    Text("OpenAI voice estimate uses $0.05/min as of 11 September 2026 and excludes Gemini. Translation, teaching and search cost extra. Gemini voice time is an elapsed-time estimate, not a bill. Provider dashboards are authoritative. The time limit is local, not a billing cap.")
                 }
                 Section {
                     Button("Export learning backup", systemImage: "square.and.arrow.up") {
@@ -390,7 +391,7 @@ struct SettingsView: View {
                     Text("Mural 0.1 · Personal build").font(.footnote)
                     Text("Voice: GPT-Live-1 · Teacher: GPT-5.6 Luna").font(.footnote)
                     Link("OpenAI data controls", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                    Text("Audio and selected text go to OpenAI while you practise. Requests disable provider storage where supported; abuse-monitoring retention may still apply. Raw audio is not saved by Mural.").font(.footnote)
+                    Text("Audio and selected text go to OpenAI while you practise, or Google when you enable and use Gemini fallback. Provider retention rules apply. Raw audio is not saved by Mural.").font(.footnote)
                     Button("Open-source notices") { notices = true }
                 }
             }.scrollContentBackground(.hidden).background(MuralColor.cream).tint(MuralColor.secondary)

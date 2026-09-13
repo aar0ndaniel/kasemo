@@ -128,6 +128,7 @@ public struct SessionRecord: Codable, Identifiable, Sendable {
     public var id = UUID()
     public let languageID: String
     public var providerID: String?
+    public var voiceProvider: AIProvider?
     public var startedAt = Date()
     public var endedAt: Date?
     public var themeID: String?

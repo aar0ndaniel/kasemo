@@ -30,3 +30,4 @@ marketing/demo/
 node_modules/
 __pycache__/
 *.py[cod]
+.agents/

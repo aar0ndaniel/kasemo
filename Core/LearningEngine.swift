@@ -49,6 +49,7 @@ public enum LearningEngine {
                   !word.sourceIDs.isEmpty, Set(word.sourceIDs).isSubset(of: allowed),
                   word.confidence.isFinite, word.confidence >= 0.8, word.confidence <= 1,
                   !word.lemma.isEmpty, word.lemma.count < 100, !word.meaning.isEmpty, word.meaning.count < 180,
+                  word.senseID.map({ $0.count <= 64 && !$0.isEmpty && $0.unicodeScalars.allSatisfy { CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_-").contains($0) } }) ?? true,
                   !word.form.isEmpty, !word.quote.isEmpty,
                   (passage.text.localizedCaseInsensitiveContains(word.quote) || passage.fragments.map(\.text).joined().localizedCaseInsensitiveContains(word.quote)),
                   word.quote.localizedCaseInsensitiveContains(word.form) else { return nil }
@@ -88,8 +89,13 @@ public enum LearningEngine {
                 if a.outcome == .success && !a.capability.isEmpty {
                     capabilityEvidence[a.capability, default: []].insert("\(calendar.startOfDay(for: a.createdAt))|\(a.context)")
                 }
-                var seenWords = Set<String>()
-                for word in a.words where !hiddenWords.contains(where: { VocabularyIdentity.hidden($0, matches: word) }) && seenWords.insert(word.key).inserted {
+                var uniqueWords: [String: WordProposal] = [:]
+                let rank: [EvidenceKind: Int] = [.exposure: 0, .understanding: 1, .assisted: 2, .independent: 3, .lapse: 4]
+                for word in a.words {
+                    if let existing = uniqueWords[word.key], (rank[existing.kind] ?? 0) >= (rank[word.kind] ?? 0) { continue }
+                    uniqueWords[word.key] = word
+                }
+                for word in uniqueWords.values where !hiddenWords.contains(where: { VocabularyIdentity.hidden($0, matches: word) }) {
                     events[word.key, default: []].append((word, a.createdAt, a.context))
                 }
             }

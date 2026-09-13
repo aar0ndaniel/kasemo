@@ -9,8 +9,11 @@ struct APIUsage { var input = 0; var output = 0; var searches = 0 }
 struct APIResult { var text: String; var sources: [SourceLink]; var usage: APIUsage }
 
 @MainActor final class APIClient {
+    let router: ProviderRouter
+    private let gemini = GeminiClient()
     private let session: URLSession
-    init() {
+    init(router: ProviderRouter) {
+        self.router = router
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 45; config.timeoutIntervalForResource = 60
         config.httpCookieStorage = nil; config.urlCache = nil
@@ -25,11 +28,28 @@ struct APIResult { var text: String; var sources: [SourceLink]; var usage: APIUs
         let (data, response) = try await session.data(for: request)
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        router.observe(http, capability: path == "responses" ? .text : .voice)
         guard (200..<300).contains(http.statusCode) else { throw APIError.http(http.statusCode) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw APIError.invalidResponse }
         return json
     }
     func respond(instructions: String, input: String, schema: [String: Any]? = nil, search: Bool = false) async throws -> APIResult {
+        if router.shouldUseGemini(.text) {
+            return try await gemini.respond(instructions: instructions, input: input, schema: schema, search: search)
+        }
+        let generation = router.text.failureGeneration
+        do {
+            let result = try await openAIResponse(instructions: instructions, input: input, schema: schema, search: search)
+            router.succeeded(.text, generation: generation)
+            return result
+        } catch {
+            guard ProviderRouter.eligible(error) else { throw error }
+            router.failed(.text)
+            guard router.geminiAvailable, !Task.isCancelled else { throw error }
+            return try await gemini.respond(instructions: instructions, input: input, schema: schema, search: search)
+        }
+    }
+    private func openAIResponse(instructions: String, input: String, schema: [String: Any]? = nil, search: Bool = false) async throws -> APIResult {
         var body: [String: Any] = ["model": "gpt-5.6-luna", "store": false, "instructions": instructions,
                                   "input": [["role": "user", "content": input]], "max_output_tokens": schema == nil ? 1400 : 2200,
                                   "reasoning": ["effort": "low"]]
@@ -71,6 +91,15 @@ struct APIResult { var text: String; var sources: [SourceLink]; var usage: APIUs
             "confidence": ["type": "number", "minimum": 0, "maximum": 1], "sourceIDs": ["type": "array", "items": string]
         ])]
     ]) }
+    static let japaneseReadingSchema: [String: Any] = object([
+        "surface": string, "kanaReading": string, "romaji": string,
+        "asciiRomaji": ["type": ["string", "null"]],
+        "hiraganaForm": ["type": ["string", "null"]],
+        "kanjiForm": ["type": ["string", "null"]],
+        "katakanaTranscription": ["type": ["string", "null"]],
+        "spellingGuide": ["type": ["string", "null"]],
+        "pronunciationNotes": ["type": ["string", "null"]]
+    ])
     enum APIError: LocalizedError {
         case missingKey, invalidResponse, incomplete, refused, http(Int)
         var errorDescription: String? {

@@ -75,12 +75,34 @@ final class ConversationExpansionTests: XCTestCase {
         XCTAssertNotNil(InputLimits.problem(exact + "い", limit: InputLimits.typedReply))
         XCTAssertNotNil(InputLimits.problem(" \n", limit: InputLimits.correction))
     }
-    func testJapaneseReadingAidSeparatesWritingReadingAndRomanization() {
+    func testJapaneseReadingAidSeparatesWritingReadingAndRomanization() throws {
         let greeting = JapaneseReading.greeting
+        XCTAssertEqual(greeting.kanaReading, "こんにちは！なにについてはなしましょうか？")
         XCTAssertEqual(greeting.reading, "こんにちは！なにについてはなしましょうか？")
         XCTAssertTrue(greeting.romaji.contains("Konnichiwa"))
-        XCTAssertTrue(TeachingPolicy.lookup(language: .japanese, meaningLanguage: "English").contains("rōmaji"))
-        XCTAssertEqual(JapaneseReading.goodMorning.reading, "おはよう")
-        XCTAssertEqual(JapaneseReading.goodMorning.romaji, "ohayō")
+        XCTAssertTrue(TeachingPolicy.lookup(language: .japanese, meaningLanguage: "English").contains("romanization"))
+
+        let morning = JapaneseReading.goodMorning
+        XCTAssertEqual(morning.surface, "おはよう")
+        XCTAssertEqual(morning.kanaReading, "おはよう")
+        XCTAssertEqual(morning.writing, "おはよう")
+        XCTAssertEqual(morning.reading, "おはよう")
+        XCTAssertEqual(morning.romaji, "ohayō")
+        XCTAssertEqual(morning.asciiRomaji, "ohayou")
+        XCTAssertEqual(morning.hiraganaForm, "おはよう")
+        XCTAssertEqual(morning.kanjiForm, "お早う")
+        XCTAssertEqual(morning.katakanaTranscription, "オハヨウ")
+        XCTAssertTrue(morning.spellingGuide?.contains("ohiao") == true)
+        XCTAssertTrue(morning.spellingGuide?.contains("お・は・よ・う") == true)
+        XCTAssertTrue(morning.pronunciationNotes?.contains("morae") == true)
+
+        // Verify backward-compatible decoding of legacy JSON
+        let legacyJSON = Data("{\"writing\":\"おはよう\",\"reading\":\"おはよう\",\"romaji\":\"ohayō\"}".utf8)
+        let decoded = try JSONDecoder().decode(JapaneseReading.self, from: legacyJSON)
+        XCTAssertEqual(decoded.surface, "おはよう")
+        XCTAssertEqual(decoded.kanaReading, "おはよう")
+        XCTAssertEqual(decoded.writing, "おはよう")
+        XCTAssertEqual(decoded.reading, "おはよう")
+        XCTAssertEqual(decoded.romaji, "ohayō")
     }
 }
