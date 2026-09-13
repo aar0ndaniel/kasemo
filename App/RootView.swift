@@ -87,7 +87,11 @@ struct TalkView: View {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         let streak = DailyStreak.project(coordinator.store.sessions, languageID: coordinator.language.id, now: context.date)
                         if streak.currentStreak > 0 {
-                            Label("\(streak.currentStreak) \(streak.currentStreak == 1 ? "day" : "days")", systemImage: "flame.fill")
+                            Label {
+                                Text("\(streak.currentStreak) \(streak.currentStreak == 1 ? "day" : "days")")
+                            } icon: {
+                                StreakIcon(size: 14)
+                            }
                                 .font(.caption).foregroundStyle(MuralColor.ink).padding(.horizontal, 12).padding(.vertical, 6)
                                 .modifier(SoftGlass(tint: MuralColor.butter.opacity(0.5))).padding(.top, 8)
                                 .accessibilityLabel("\(coordinator.language.name) streak: \(streak.currentStreak) days. Longest: \(streak.longestStreak) days.")

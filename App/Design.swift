@@ -18,8 +18,8 @@ struct Brand: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(RadialGradient(colors: [MuralColor.butter, MuralColor.iris], center: .topLeading, startRadius: 0, endRadius: 18)).frame(width: 17, height: 17)
-            Text("mural").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-1.6)
-        }.foregroundStyle(MuralColor.ink).accessibilityLabel("Mural")
+            Text("kpo o").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-1.6)
+        }.foregroundStyle(MuralColor.ink).accessibilityLabel("Kpo o")
     }
 }
 
@@ -120,5 +120,143 @@ struct PageHeading: View {
             Text(title).font(.system(.largeTitle, design: .rounded, weight: .semibold)).tracking(-1).foregroundStyle(MuralColor.ink)
             if !subtitle.isEmpty { Text(subtitle).font(.subheadline).foregroundStyle(MuralColor.secondary) }
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct StreakIcon: View {
+    var size: CGFloat = 16
+    var body: some View {
+        StreakVectorShape()
+            .frame(width: size * 0.65, height: size)
+    }
+}
+
+/// Precise vector rendition of streak.svg (purple and blue flame)
+struct StreakVectorShape: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            let sx = w / 64.0
+            let sy = h / 102.0
+            let ox = 36.0
+            let oy = 46.0
+            ZStack {
+                Path { p in
+                    p.move(to: CGPoint(x: (71.0 - ox) * sx, y: (55.7 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (79.3 - ox) * sx, y: (47.7 - oy) * sy),
+                               control1: CGPoint(x: (71.3 - ox) * sx, y: (51.8 - oy) * sy),
+                               control2: CGPoint(x: (74.4 - ox) * sx, y: (49.0 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (90.0 - ox) * sx, y: (50.0 - oy) * sy),
+                               control1: CGPoint(x: (84.2 - ox) * sx, y: (46.4 - oy) * sy),
+                               control2: CGPoint(x: (88.2 - ox) * sx, y: (47.7 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (90.8 - ox) * sx, y: (61.2 - oy) * sy),
+                               control1: CGPoint(x: (91.1 - ox) * sx, y: (52.0 - oy) * sy),
+                               control2: CGPoint(x: (91.3 - ox) * sx, y: (56.1 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (80.5 - ox) * sx, y: (59.9 - oy) * sy),
+                               control1: CGPoint(x: (87.1 - ox) * sx, y: (59.5 - oy) * sy),
+                               control2: CGPoint(x: (83.7 - ox) * sx, y: (59.0 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (72.3 - ox) * sx, y: (64.3 - oy) * sy),
+                               control1: CGPoint(x: (77.1 - ox) * sx, y: (60.8 - oy) * sy),
+                               control2: CGPoint(x: (74.4 - ox) * sx, y: (62.5 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (71.0 - ox) * sx, y: (55.7 - oy) * sy),
+                               control1: CGPoint(x: (71.5 - ox) * sx, y: (61.5 - oy) * sy),
+                               control2: CGPoint(x: (70.8 - ox) * sx, y: (58.7 - oy) * sy))
+                    p.closeSubpath()
+                }
+                .fill(Color(red: 0.263, green: 0.180, blue: 0.686))
+
+                Path { p in
+                    p.move(to: CGPoint(x: (62.2 - ox) * sx, y: (71.1 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (60.5 - ox) * sx, y: (83.7 - oy) * sy),
+                               control1: CGPoint(x: (59.9 - ox) * sx, y: (73.9 - oy) * sy),
+                               control2: CGPoint(x: (59.6 - ox) * sx, y: (78.3 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (62.1 - ox) * sx, y: (97.7 - oy) * sy),
+                               control1: CGPoint(x: (61.3 - ox) * sx, y: (88.6 - oy) * sy),
+                               control2: CGPoint(x: (63.7 - ox) * sx, y: (94.3 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (54.0 - ox) * sx, y: (99.6 - oy) * sy),
+                               control1: CGPoint(x: (60.5 - ox) * sx, y: (101.1 - oy) * sy),
+                               control2: CGPoint(x: (57.3 - ox) * sx, y: (101.4 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (44.0 - ox) * sx, y: (90.1 - oy) * sy),
+                               control1: CGPoint(x: (50.8 - ox) * sx, y: (97.8 - oy) * sy),
+                               control2: CGPoint(x: (47.5 - ox) * sx, y: (93.1 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (38.8 - ox) * sx, y: (112.2 - oy) * sy),
+                               control1: CGPoint(x: (42.1 - ox) * sx, y: (96.0 - oy) * sy),
+                               control2: CGPoint(x: (40.3 - ox) * sx, y: (104.0 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (43.1 - ox) * sx, y: (133.4 - oy) * sy),
+                               control1: CGPoint(x: (37.5 - ox) * sx, y: (119.5 - oy) * sy),
+                               control2: CGPoint(x: (39.3 - ox) * sx, y: (127.6 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (61.6 - ox) * sx, y: (145.6 - oy) * sy),
+                               control1: CGPoint(x: (47.0 - ox) * sx, y: (139.4 - oy) * sy),
+                               control2: CGPoint(x: (53.2 - ox) * sx, y: (143.2 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (85.8 - ox) * sx, y: (144.6 - oy) * sy),
+                               control1: CGPoint(x: (69.3 - ox) * sx, y: (147.7 - oy) * sy),
+                               control2: CGPoint(x: (78.8 - ox) * sx, y: (147.5 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (98.1 - ox) * sx, y: (128.3 - oy) * sy),
+                               control1: CGPoint(x: (93.7 - ox) * sx, y: (141.3 - oy) * sy),
+                               control2: CGPoint(x: (97.2 - ox) * sx, y: (135.8 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (98.0 - ox) * sx, y: (103.7 - oy) * sy),
+                               control1: CGPoint(x: (99.1 - ox) * sx, y: (119.9 - oy) * sy),
+                               control2: CGPoint(x: (97.4 - ox) * sx, y: (110.9 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (95.4 - ox) * sx, y: (96.2 - oy) * sy),
+                               control1: CGPoint(x: (98.4 - ox) * sx, y: (100.5 - oy) * sy),
+                               control2: CGPoint(x: (97.4 - ox) * sx, y: (98.0 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (96.3 - ox) * sx, y: (90.2 - oy) * sy),
+                               control1: CGPoint(x: (94.4 - ox) * sx, y: (94.7 - oy) * sy),
+                               control2: CGPoint(x: (95.4 - ox) * sx, y: (91.8 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (84.3 - ox) * sx, y: (95.9 - oy) * sy),
+                               control1: CGPoint(x: (91.0 - ox) * sx, y: (89.8 - oy) * sy),
+                               control2: CGPoint(x: (87.2 - ox) * sx, y: (91.6 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (77.8 - ox) * sx, y: (97.5 - oy) * sy),
+                               control1: CGPoint(x: (82.2 - ox) * sx, y: (99.1 - oy) * sy),
+                               control2: CGPoint(x: (79.4 - ox) * sx, y: (99.8 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (76.8 - ox) * sx, y: (81.8 - oy) * sy),
+                               control1: CGPoint(x: (75.8 - ox) * sx, y: (94.4 - oy) * sy),
+                               control2: CGPoint(x: (78.1 - ox) * sx, y: (87.8 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (62.2 - ox) * sx, y: (71.1 - oy) * sy),
+                               control1: CGPoint(x: (75.5 - ox) * sx, y: (76.9 - oy) * sy),
+                               control2: CGPoint(x: (68.4 - ox) * sx, y: (72.0 - oy) * sy))
+                    p.closeSubpath()
+                }
+                .fill(Color(red: 0.263, green: 0.180, blue: 0.686))
+
+                Path { p in
+                    p.move(to: CGPoint(x: (65.0 - ox) * sx, y: (104.0 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (62.1 - ox) * sx, y: (115.6 - oy) * sy),
+                               control1: CGPoint(x: (66.1 - ox) * sx, y: (108.1 - oy) * sy),
+                               control2: CGPoint(x: (65.0 - ox) * sx, y: (112.6 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (49.2 - ox) * sx, y: (117.0 - oy) * sy),
+                               control1: CGPoint(x: (58.6 - ox) * sx, y: (118.9 - oy) * sy),
+                               control2: CGPoint(x: (53.7 - ox) * sx, y: (118.5 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (54.8 - ox) * sx, y: (136.0 - oy) * sy),
+                               control1: CGPoint(x: (49.4 - ox) * sx, y: (123.6 - oy) * sy),
+                               control2: CGPoint(x: (50.6 - ox) * sx, y: (130.5 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (73.2 - ox) * sx, y: (142.0 - oy) * sy),
+                               control1: CGPoint(x: (59.1 - ox) * sx, y: (141.6 - oy) * sy),
+                               control2: CGPoint(x: (66.3 - ox) * sx, y: (143.0 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (87.0 - ox) * sx, y: (129.9 - oy) * sy),
+                               control1: CGPoint(x: (81.8 - ox) * sx, y: (140.7 - oy) * sy),
+                               control2: CGPoint(x: (85.4 - ox) * sx, y: (136.1 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (88.5 - ox) * sx, y: (113.9 - oy) * sy),
+                               control1: CGPoint(x: (88.4 - ox) * sx, y: (124.4 - oy) * sy),
+                               control2: CGPoint(x: (88.5 - ox) * sx, y: (118.9 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (77.4 - ox) * sx, y: (120.8 - oy) * sy),
+                               control1: CGPoint(x: (84.9 - ox) * sx, y: (115.8 - oy) * sy),
+                               control2: CGPoint(x: (81.3 - ox) * sx, y: (117.9 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (76.2 - ox) * sx, y: (110.8 - oy) * sy),
+                               control1: CGPoint(x: (78.0 - ox) * sx, y: (117.2 - oy) * sy),
+                               control2: CGPoint(x: (78.4 - ox) * sx, y: (113.5 - oy) * sy))
+                    p.addCurve(to: CGPoint(x: (65.0 - ox) * sx, y: (104.0 - oy) * sy),
+                               control1: CGPoint(x: (73.2 - ox) * sx, y: (107.8 - oy) * sy),
+                               control2: CGPoint(x: (69.1 - ox) * sx, y: (105.0 - oy) * sy))
+                    p.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [Color(red: 0.616, green: 0.557, blue: 0.961),
+                                              Color(red: 0.482, green: 0.408, blue: 0.929),
+                                              MuralColor.iris],
+                                     startPoint: .top, endPoint: .bottom))
+            }
+        }
+        .aspectRatio(64.0 / 102.0, contentMode: .fit)
     }
 }

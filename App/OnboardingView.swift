@@ -188,7 +188,7 @@ struct AIConsentView: View {
             Text("Before we talk.").font(.system(.title, design: .rounded, weight: .semibold))
                 .accessibilityIdentifier("ai-consent-title")
             Text(AIProcessingConsent.summary).font(.body)
-            Text("Your learning record is stored on this iPhone. Mural does not save raw audio. You can keep browsing your saved words and conversations without agreeing.")
+            Text("Your learning record is stored on this iPhone. Kpo o does not save raw audio. You can keep browsing your saved words and conversations without agreeing.")
                 .font(.subheadline).foregroundStyle(MuralColor.secondary)
             Link("Privacy policy", destination: URL(string: "https://mural.chat/privacy/")!).font(.subheadline).underline()
             Button("Agree and continue", action: agree).font(.headline).frame(maxWidth: .infinity).padding(18)
