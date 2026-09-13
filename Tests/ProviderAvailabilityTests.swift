@@ -66,4 +66,24 @@ final class ProviderAvailabilityTests: XCTestCase {
         XCTAssertFalse(quotaAvail.mayAttemptOpenAI(now: now.addingTimeInterval(3600)))
         XCTAssertFalse(quotaAvail.mayAttemptOpenAI(now: now.addingTimeInterval(86400)))
     }
+    func testGeminiWireSetupAndPayloads() throws {
+        let setup = GeminiWire.setup(model: "gemini-3.1-flash-live-preview", instructions: "Speak Japanese")
+        let setupPayload = try XCTUnwrap(setup["setup"] as? [String: Any])
+        XCTAssertEqual(setupPayload["model"] as? String, "models/gemini-3.1-flash-live-preview")
+
+        let text = GeminiWire.text("Hello")
+        XCTAssertNotNil(text["clientContent"])
+
+        let audio = GeminiWire.audio(Data([0x00, 0x01]))
+        XCTAssertNotNil(audio["realtimeInput"])
+
+        let pcmPart: [String: Any] = [
+            "inlineData": [
+                "mimeType": "audio/pcm;rate=24000",
+                "data": Data([0x00, 0x01, 0x02, 0x03]).base64EncodedString()
+            ]
+        ]
+        let pcmData = try XCTUnwrap(GeminiWire.pcm(pcmPart))
+        XCTAssertEqual(pcmData.count, 4)
+    }
 }

@@ -4,14 +4,33 @@ import Foundation
 public enum GeminiWire {
     public static func setup(model: String, instructions: String) -> [String: Any] {
         let modelIdentifier = model.hasPrefix("models/") ? model : "models/" + model
-        return ["setup": ["model": modelIdentifier,
-            "generationConfig": ["responseModalities": ["AUDIO"]],
-            "systemInstruction": ["parts": [["text": instructions]]],
-            "inputAudioTranscription": [:] as [String: String], "outputAudioTranscription": [:] as [String: String],
-            "realtimeInputConfig": ["automaticActivityDetection": ["silenceDurationMs": 800]],
-            "tools": [["functionDeclarations": [["name": "mural_lookup",
-                "description": "Ask the application for current verified facts or detailed language help before answering.",
-                "parameters": ["type": "OBJECT", "properties": ["query": ["type": "STRING"]], "required": ["query"]]]]]]]
+        return [
+            "setup": [
+                "model": modelIdentifier,
+                "generationConfig": ["responseModalities": ["AUDIO"]],
+                "systemInstruction": ["parts": [["text": instructions]]],
+                "inputAudioTranscription": [:] as [String: String],
+                "outputAudioTranscription": [:] as [String: String],
+                "realtimeInputConfig": ["automaticActivityDetection": ["silenceDurationMs": 800]],
+                "tools": [
+                    [
+                        "functionDeclarations": [
+                            [
+                                "name": "mural_lookup",
+                                "description": "Ask the application for current verified facts or detailed language help before answering.",
+                                "parameters": [
+                                    "type": "OBJECT",
+                                    "properties": [
+                                        "query": ["type": "STRING"]
+                                    ],
+                                    "required": ["query"]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
     }
     public static func text(_ text: String, complete: Bool = true) -> [String: Any] {
         ["clientContent": ["turns": [["role": "user", "parts": [["text": text]]]], "turnComplete": complete]]
