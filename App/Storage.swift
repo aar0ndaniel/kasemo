@@ -59,14 +59,16 @@ import MuralCore
     }
     func deleteSession(_ id: UUID) { onSessionInvalidation?(id); archive.sessions.removeAll { $0.id == id }; persist() }
     func hideWord(_ id: String) { archive.preferences.hiddenWords.append(id); persist() }
-    func correctPassage(sessionID: UUID, passageID: String, text: String) {
+    @discardableResult func correctPassage(sessionID: UUID, passageID: String, text: String) -> Bool {
+        if let problem = InputLimits.problem(text, limit: InputLimits.correction) { error = problem; return false }
         guard let index = archive.sessions.firstIndex(where: { $0.id == sessionID }),
-              let passage = archive.sessions[index].passages.first(where: { $0.id == passageID && $0.speaker == .user }) else { return }
+              let passage = archive.sessions[index].passages.first(where: { $0.id == passageID && $0.speaker == .user }) else { return false }
         for (offset, fragment) in passage.fragments.enumerated() {
-            archive.sessions[index].correctFragment(id: fragment.id, text: offset == 0 ? String(text.prefix(10_000)) : "")
+            archive.sessions[index].correctFragment(id: fragment.id, text: offset == 0 ? text : "")
         }
         onSessionInvalidation?(sessionID)
         persist()
+        return error == nil
     }
     func deleteAll() {
         if let migrationBackupURL {

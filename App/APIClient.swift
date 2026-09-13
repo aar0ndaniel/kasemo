@@ -59,8 +59,14 @@ struct APIResult { var text: String; var sources: [SourceLink]; var usage: APIUs
     static func assessmentSchema(language: LanguageModule) -> [String: Any] { object([
         "outcome": ["type": "string", "enum": ["success", "partial", "breakdown", "uncertain"]],
         "suggestedLevel": ["type": "integer", "minimum": 0, "maximum": 5], "nextGoal": string, "capability": string,
+        "completed": ["type": "boolean"],
+        "feedback": ["type": "array", "maxItems": 6, "items": object([
+            "sourceID": string, "quote": string, "status": ["type": "string", "enum": ["usedWell", "needsPractice"]],
+            "replacement": string, "explanation": string
+        ])],
         "words": ["type": "array", "maxItems": 12, "items": object([
             "lemma": string, "meaning": string, "form": string, "quote": string, "language": ["type": "string", "enum": Array(Set([language.id, "en", "mixed", "uncertain"])).sorted()],
+            "senseID": ["type": ["string", "null"]],
             "kind": ["type": "string", "enum": ["exposure", "understanding", "assisted", "independent", "lapse"]],
             "confidence": ["type": "number", "minimum": 0, "maximum": 1], "sourceIDs": ["type": "array", "items": string]
         ])]

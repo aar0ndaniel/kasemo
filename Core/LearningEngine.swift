@@ -37,6 +37,11 @@ public enum LearningEngine {
               (0...5).contains(proposal.suggestedLevel), proposal.words.count <= 12 else { return nil }
         let allowed = Set(passage.fragments.map(\.id))
         var validated = proposal
+        if proposal.outcome == .uncertain || proposal.completed == false {
+            validated.words = []; validated.feedback = []
+            return validated
+        }
+        validated.feedback = Array((proposal.feedback ?? []).filter { $0.isValid(in: passage) }.prefix(6))
         validated.nextGoal = String(validated.nextGoal.prefix(300))
         validated.capability = String(validated.capability.prefix(160))
         validated.words = proposal.words.compactMap { word in
@@ -45,7 +50,7 @@ public enum LearningEngine {
                   word.confidence.isFinite, word.confidence >= 0.8, word.confidence <= 1,
                   !word.lemma.isEmpty, word.lemma.count < 100, !word.meaning.isEmpty, word.meaning.count < 180,
                   !word.form.isEmpty, !word.quote.isEmpty,
-                  passage.text.localizedCaseInsensitiveContains(word.quote),
+                  (passage.text.localizedCaseInsensitiveContains(word.quote) || passage.fragments.map(\.text).joined().localizedCaseInsensitiveContains(word.quote)),
                   word.quote.localizedCaseInsensitiveContains(word.form) else { return nil }
             let sourceTexts = passage.fragments.filter { word.sourceIDs.contains($0.id) }.map(\.text)
             guard Transcript.join(sourceTexts).localizedCaseInsensitiveContains(word.quote) || sourceTexts.joined().localizedCaseInsensitiveContains(word.quote) else { return nil }

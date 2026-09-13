@@ -1,5 +1,6 @@
 import SwiftUI
 import MuralCore
+import NaturalLanguage
 
 struct RootView: View {
     @State private var coordinator: ConversationCoordinator
@@ -72,50 +73,66 @@ struct RootView: View {
 struct TalkView: View {
     @Bindable var coordinator: ConversationCoordinator
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var typing = false
     @State private var transcript: SessionRecord?
     @State private var lookup: WordLookup?
     var body: some View {
-        GeometryReader { geometry in
+        VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 0) {
                     Text(coordinator.selectedTheme?.title ?? coordinator.language.talkTitle)
                         .font(.system(.caption, design: .rounded, weight: .medium)).foregroundStyle(MuralColor.secondary)
                         .padding(.horizontal, 14).padding(.vertical, 9).background(MuralColor.butter.opacity(0.58), in: Capsule()).padding(.top, 12)
-                    Spacer(minLength: 8)
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        let streak = DailyStreak.project(coordinator.store.sessions, languageID: coordinator.language.id, now: context.date)
+                        if streak.currentStreak > 0 {
+                            Label("\(streak.currentStreak) \(streak.currentStreak == 1 ? "day" : "days")", systemImage: "flame.fill")
+                                .font(.caption).foregroundStyle(MuralColor.ink).padding(.horizontal, 12).padding(.vertical, 6)
+                                .modifier(SoftGlass(tint: MuralColor.butter.opacity(0.5))).padding(.top, 8)
+                                .accessibilityLabel("\(coordinator.language.name) streak: \(streak.currentStreak) days. Longest: \(streak.longestStreak) days.")
+                                .accessibilityIdentifier("daily-streak")
+                        }
+                    }
                     MuralOrb(energy: max(coordinator.outputLevel, coordinator.inputLevel * 0.45), listening: coordinator.state == .active && !coordinator.isMuted, active: coordinator.state != .closing)
                         .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222).padding(.vertical, 8)
                     Text(coordinator.status).font(.system(.caption, design: .rounded)).foregroundStyle(MuralColor.secondary)
                         .contentTransition(.numericText()).padding(.top, 6).padding(.bottom, 16).accessibilityAddTraits(.updatesFrequently)
                         .accessibilityIdentifier("conversation-status")
                     captionArea
-                    Spacer(minLength: 12)
+                    if let notice = coordinator.notice {
+                        Text(notice).font(.footnote).foregroundStyle(MuralColor.secondary).multilineTextAlignment(.center).padding(.vertical, 12)
+                    }
+                }.padding(.horizontal, 26).padding(.bottom, 16).frame(maxWidth: .infinity)
+            }.scrollIndicators(.hidden).frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
                     controls
                     Text(coordinator.microphoneLabel).font(.caption2).foregroundStyle(MuralColor.secondary).padding(.top, 10)
                         .accessibilityIdentifier("microphone-status")
-                    HStack(spacing: 24) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 20) { secondaryControls }
+                        VStack(spacing: 0) { secondaryControls }
+                    }.font(.caption).padding(.top, 4).padding(.bottom, 6)
+            }.padding(.horizontal, 20).padding(.top, 10).frame(maxWidth: .infinity).background(MuralColor.cream)
+        }
+        .sheet(isPresented: $typing) { TypedReplyView(coordinator: coordinator) }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: coordinator.state)
+        .task(id: coordinator.readingRequestID) { await coordinator.updateReadingAid() }
+        .sheet(item: $transcript) { session in
+            TranscriptView(session: session, meaningLanguage: coordinator.store.preferences.meaningLanguage)
+        }
+        .sheet(item: $lookup) { item in LookupView(item: item, coordinator: coordinator) }
+    }
+    @ViewBuilder private var secondaryControls: some View {
                         if coordinator.state == .active {
-                            Button("Type instead", systemImage: "keyboard") { typing = true }
-                            Button("A little help", systemImage: "sparkles") { coordinator.help() }
+                            Button("Type instead", systemImage: "keyboard") { typing = true }.frame(minHeight: 44)
+                            Button("A little help", systemImage: "sparkles") { coordinator.help() }.frame(minHeight: 44)
                         } else if coordinator.session == nil {
                             Text("Reply in whichever language comes to you.").foregroundStyle(MuralColor.secondary)
                         } else if !coordinator.isRunning {
                             Button("New conversation", systemImage: "arrow.counterclockwise") { coordinator.resetConversation() }
                                 .accessibilityIdentifier("new-conversation")
                         }
-                    }.font(.caption).padding(.top, 6).padding(.bottom, 12)
-                    if let notice = coordinator.notice {
-                        Text(notice).font(.footnote).foregroundStyle(MuralColor.secondary).multilineTextAlignment(.center).padding(.bottom, 12)
-                    }
-                }.padding(.horizontal, 30).frame(maxWidth: .infinity).frame(minHeight: geometry.size.height)
-            }.scrollIndicators(.hidden)
-        }
-        .sheet(isPresented: $typing) { TypedReplyView(coordinator: coordinator) }
-        .animation(.smooth(duration: 0.35), value: coordinator.state)
-        .sheet(item: $transcript) { session in
-            TranscriptView(session: session, meaningLanguage: coordinator.store.preferences.meaningLanguage)
-        }
-        .sheet(item: $lookup) { item in LookupView(item: item, coordinator: coordinator) }
     }
     private var captionArea: some View {
         VStack(spacing: 12) {
@@ -125,6 +142,18 @@ struct TalkView: View {
                     guard url.scheme == "mural-word", let components = URLComponents(url: url, resolvingAgainstBaseURL: false), let word = components.queryItems?.first?.value else { return .discarded }
                     lookup = WordLookup(word: word, sentence: coordinator.caption); return .handled
                 }).accessibilityIdentifier("target-caption")
+            if coordinator.readingEnabled {
+                if let reading = coordinator.reading {
+                    VStack(spacing: 5) {
+                        Text(reading.reading).font(.body).accessibilityIdentifier("japanese-kana")
+                        Text(reading.romaji).font(.subheadline).accessibilityIdentifier("japanese-romaji")
+                    }.foregroundStyle(MuralColor.secondary).multilineTextAlignment(.center).textSelection(.enabled)
+                } else if let error = coordinator.readingError {
+                    Text(error).font(.caption).foregroundStyle(MuralColor.secondary)
+                } else {
+                    Text("Finding the reading…").font(.caption).foregroundStyle(MuralColor.secondary)
+                }
+            }
             if coordinator.store.preferences.meaningVisible {
                 Text(coordinator.assistantPassage == nil ? MeaningLanguages.greeting(in: coordinator.store.preferences.meaningLanguage) : !coordinator.meaning.isEmpty ? coordinator.meaning : coordinator.translating ? "Finding the meaning…" : "")
                     .font(.subheadline).foregroundStyle(MuralColor.secondary).multilineTextAlignment(.center)
@@ -137,10 +166,8 @@ struct TalkView: View {
                 }
             }
             if let user = coordinator.userPassage {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("YOU").font(.system(.caption2, design: .rounded, weight: .medium))
-                    Text(String(user.text.suffix(160))).font(.caption)
-                }.foregroundStyle(MuralColor.secondary).multilineTextAlignment(.center).padding(.top, 3)
+                LearnerPassageView(passage: user, assessment: coordinator.session?.assessments.first { $0.passageID == user.id })
+                    .padding(.top, 6)
             }
             if coordinator.working { ProgressView("Checking that for you…").font(.caption).tint(MuralColor.secondary) }
             if let sources = coordinator.session?.topics.last?.sources, !sources.isEmpty {
@@ -149,14 +176,18 @@ struct TalkView: View {
         }.frame(minHeight: typeSize.isAccessibilitySize ? 100 : 105).frame(maxWidth: .infinity)
     }
     private var linkedCaption: AttributedString {
-        var result = AttributedString()
-        for (i, word) in coordinator.caption.components(separatedBy: " ").enumerated() {
-            var part = AttributedString((i > 0 ? " " : "") + word)
+        let text = coordinator.caption
+        var result = AttributedString(text)
+        let tokenizer = NLTokenizer(unit: .word); tokenizer.string = text
+        tokenizer.setLanguage(NLLanguage(rawValue: coordinator.language.id))
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let word = String(text[range])
             var components = URLComponents(); components.scheme = "mural-word"; components.host = "lookup"
             components.queryItems = [URLQueryItem(name: "word", value: word)]
-            if coordinator.assistantPassage != nil { part.link = components.url }
-            part.foregroundColor = MuralColor.ink; result.append(part)
+            if let attributedRange = Range(range, in: result), coordinator.assistantPassage != nil { result[attributedRange].link = components.url }
+            return true
         }
+        result.foregroundColor = MuralColor.ink
         return result
     }
     private var controls: some View {
@@ -220,6 +251,7 @@ struct TypedReplyView: View {
     let coordinator: ConversationCoordinator
     @State private var text = ""
     @State private var sending = false
+    @State private var sendError: String?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focused: Bool
     var body: some View {
@@ -227,9 +259,15 @@ struct TypedReplyView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Say it your way.").font(.system(.title, design: .rounded, weight: .semibold))
                 TextField("Reply in \(coordinator.language.name) or another language", text: $text, axis: .vertical).lineLimit(3...6).focused($focused).padding(18).background(.white, in: RoundedRectangle(cornerRadius: 22))
-                Button { sending = true; Task { await coordinator.sendTyped(text); sending = false; dismiss() } } label: {
+                    .accessibilityIdentifier("typed-reply-field")
+                InputCountView(text: text, limit: InputLimits.typedReply)
+                if let sendError { Text(sendError).font(.footnote).foregroundStyle(.red) }
+                Button { sending = true; Task {
+                    let accepted = await coordinator.sendTyped(text); sending = false
+                    if accepted { dismiss() } else { sendError = coordinator.error }
+                } } label: {
                     HStack { Text(sending ? "Sending…" : "Send reply"); Spacer(); Image(systemName: "arrow.up") }.padding(18).background(MuralColor.orange, in: Capsule())
-                }.disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }.disabled(sending || InputLimits.problem(text, limit: InputLimits.typedReply) != nil).accessibilityIdentifier("send-typed-reply")
                 Spacer()
             }.padding(26).foregroundStyle(MuralColor.ink).background(MuralColor.cream)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }

@@ -94,6 +94,7 @@ public struct Assessment: Codable, Identifiable, Sendable {
     public var createdAt: Date
     public var context: String
     public var completed: Bool?
+    public var feedback: [UsageFeedback]?
     public init(passageID: String, revisionKey: String, outcome: Outcome, suggestedLevel: Int, nextGoal: String, capability: String, words: [WordProposal], createdAt: Date = .now, context: String = "free") {
         self.passageID = passageID; self.revisionKey = revisionKey; self.outcome = outcome
         self.suggestedLevel = suggestedLevel; self.nextGoal = nextGoal; self.capability = capability

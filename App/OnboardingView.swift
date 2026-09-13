@@ -46,9 +46,9 @@ struct OnboardingView: View {
                 VStack(spacing: step == 0 ? 22 : 18) {
                     VStack(spacing: 4) {
                         MuralOrb().frame(height: typeSize.isAccessibilitySize ? 80 : step == 0 ? 134 : 74)
-                        Text(greeting)
+                        Text(step == 0 ? (LanguageRegistry.all[greetingIndex].greetingWord) : target.greetingWord)
                             .font(.system(size: typeSize.isAccessibilitySize ? 46 : step == 0 ? 60 : 48, weight: .medium, design: .rounded))
-                            .tracking(-2).id(greeting)
+                            .tracking(-1).minimumScaleFactor(0.5).lineLimit(1).id(greeting)
                             .transition(.opacity)
                             .frame(height: step == 0 ? 76 : 60)
                             .accessibilityIdentifier("onboarding-greeting")

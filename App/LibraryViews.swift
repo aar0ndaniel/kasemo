@@ -183,7 +183,9 @@ struct TranscriptView: View {
                         ForEach(session.passages) { passage in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(passage.speaker == .assistant ? "MURAL" : "YOU").font(.caption).tracking(1).foregroundStyle(MuralColor.secondary)
-                                Text(passage.text).font(.system(.title3, design: .rounded)).textSelection(.enabled)
+                                if passage.speaker == .user {
+                                    LearnerPassageView(passage: passage, assessment: session.assessments.first { $0.passageID == passage.id })
+                                } else { Text(passage.text).font(.system(.title3, design: .rounded)).textSelection(.enabled) }
                                 if let translation = session.translations[MeaningRequest.cacheKey(revisionKey: passage.revisionKey, language: meaningLanguage)] ?? session.translations[passage.revisionKey] {
                                     Text(translation).font(.subheadline).foregroundStyle(MuralColor.secondary)
                                 }
@@ -267,12 +269,17 @@ struct EditableTranscriptView: View {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 20) {
                     TextField("What you said", text: $editedText, axis: .vertical).lineLimit(4...10).padding(18).background(.white, in: RoundedRectangle(cornerRadius: 20))
+                        .accessibilityIdentifier("correction-field")
+                    InputCountView(text: editedText, limit: InputLimits.correction)
+                    if let error = store.error { Text(error).font(.footnote).foregroundStyle(.red) }
                     Text("Correct a misheard phrase. Learning evidence from the old wording will be removed; the original remains in your backup history.").font(.footnote).foregroundStyle(MuralColor.secondary)
                     Spacer()
                 }.padding(24).background(MuralColor.cream).navigationTitle("What you said").navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editingID = nil } }
-                        ToolbarItem(placement: .confirmationAction) { Button("Save") { if let id = editingID { store.correctPassage(sessionID: sessionID, passageID: id, text: editedText) }; editingID = nil } }
+                        ToolbarItem(placement: .confirmationAction) { Button("Save") {
+                            if let id = editingID, store.correctPassage(sessionID: sessionID, passageID: id, text: editedText) { editingID = nil }
+                        }.disabled(InputLimits.problem(editedText, limit: InputLimits.correction) != nil) }
                     }
             }.presentationDetents([.medium, .large])
         }
@@ -295,9 +302,23 @@ struct SettingsView: View {
     private var totalVoiceSeconds: Double { store.sessions.reduce(0) { $0 + $1.voiceSeconds } }
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    LearningLanguagePicker(coordinator: coordinator)
+              Form {
+                  Section("Conversation style") {
+                      TextField("What should Mural call you?", text: Binding(get: { store.preferences.learnerName ?? "" }, set: { value in store.updatePreferences { $0.learnerName = value } }))
+                          .accessibilityIdentifier("learner-name")
+                      TextField("A nickname for Mural", text: Binding(get: { store.preferences.partnerName ?? "" }, set: { value in store.updatePreferences { $0.partnerName = value } }))
+                      Toggle("Playful banter", isOn: Binding(get: { store.preferences.playfulTeaching ?? true }, set: { value in store.updatePreferences { $0.playfulTeaching = value } }))
+                      Toggle("Brief help in my subtitle language", isOn: Binding(get: { store.preferences.supportLanguageBanter ?? true }, set: { value in store.updatePreferences { $0.supportLanguageBanter = value } }))
+                      Text("A little teasing, never pressure. You can ask Mural to stop or keep a challenge entirely in your learning language.").font(.footnote).foregroundStyle(MuralColor.secondary)
+                  }.disabled(coordinator.isRunning)
+                  Section {
+                      LearningLanguagePicker(coordinator: coordinator)
+                      if coordinator.language.id == "ja" {
+                          Toggle("Kana and rōmaji reading aid", isOn: Binding(get: { store.preferences.readingAidEnabled ?? true }, set: { value in store.updatePreferences { $0.readingAidEnabled = value } }))
+                              .accessibilityIdentifier("japanese-reading-toggle")
+                          Text("Japanese writing → kana reading → rōmaji. For example: おはよう → ohayō (type ohayou). Long vowels and small っ matter. Visible readings count as supported practice.").font(.footnote).foregroundStyle(MuralColor.secondary)
+                          Link("Practise scripts and native audio with Irodori", destination: URL(string: "https://www.irodori.jpf.go.jp/en/starter/pdf.html")!)
+                      }
                     Toggle("Meaning subtitles", isOn: Binding(get: { store.preferences.meaningVisible }, set: { value in
                         if value != store.preferences.meaningVisible { coordinator.toggleMeaning() }
                     }))

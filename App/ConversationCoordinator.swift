@@ -23,6 +23,11 @@ import MuralCore
     var notice: String?
     var showSettings = false
     var showAIConsent = false
+    private(set) var reading: JapaneseReading?
+    private(set) var readingError: String?
+    var readingEnabled: Bool { language.id == "ja" && (store.preferences.readingAidEnabled ?? true) }
+    var conversationStyle: ConversationStyle { ConversationStyle(preferences: store.preferences) }
+    var readingRequestID: String { "\(session?.id.uuidString ?? "greeting")|\(assistantPassage?.revisionKey ?? "")|\(readingEnabled)" }
     private var startAfterConsent = false
     private let api: APIClient
     private let transport = LiveTransport()
@@ -48,7 +53,8 @@ import MuralCore
         let api = APIClient(); self.api = api
         finalAssessments = FinalAssessmentQueue { snapshot, passage in
             guard store.preferences.aiConsentVersion == AIProcessingConsent.version || AudioVerification.requested else { throw AIProcessingConsent.ConsentError.required }
-            return try await Self.assess(api: api, snapshot: snapshot, passage: passage)
+            return try await Self.assess(api: api, snapshot: snapshot, passage: passage,
+                knownWords: LearningEngine.project(store.sessions, languageID: snapshot.languageID).words)
         }
         meanings = MeaningController { request in
             guard store.preferences.aiConsentVersion == AIProcessingConsent.version || AudioVerification.requested else { throw AIProcessingConsent.ConsentError.required }
@@ -120,7 +126,7 @@ import MuralCore
         let learner = store.learner
         // Each new conversation starts fresh; learned vocabulary and difficulty still carry forward.
         let history: [[String: Any]] = []
-        let instructions = TeachingPolicy.voice(language: language, learner: learner, theme: selectedTheme, interests: store.preferences.interests, meaningLanguage: store.preferences.meaningLanguage)
+        let instructions = TeachingPolicy.voice(language: language, learner: learner, theme: selectedTheme, interests: store.preferences.interests, meaningLanguage: store.preferences.meaningLanguage, style: conversationStyle)
         connectionTask = Task { [weak self] in
             guard let self else { return }
             do { try await self.transport.connect(api: self.api, instructions: instructions, history: history) }
@@ -266,8 +272,9 @@ import MuralCore
             guard state == .active || state == .closing, let delta = event["delta"] as? String,
                   let start = event["start_ms"] as? Int, let end = event["end_ms"] as? Int, start >= 0, end >= start else { return }
             let speaker: Speaker = type == "session.input_transcript.delta" ? .user : .assistant
-            let fragment = Fragment(id: event["event_id"] as? String ?? UUID().uuidString, speaker: speaker, text: delta,
+            var fragment = Fragment(id: event["event_id"] as? String ?? UUID().uuidString, speaker: speaker, text: delta,
                                     startMS: start, endMS: end, meaningVisible: store.preferences.meaningVisible)
+            fragment.readingVisible = readingEnabled
             session?.append(fragment); lastActivity = .now; scheduleSave()
             if speaker == .assistant { scheduleTranslation(); if state == .active { checkLanguage() } }
             else if state == .active { scheduleAssessment() }
@@ -356,13 +363,14 @@ import MuralCore
         scheduleTranslation()
     }
     #endif
-    private struct AssessmentResult: Decodable { var outcome: Outcome; var suggestedLevel: Int; var nextGoal: String; var capability: String; var words: [WordProposal] }
-    private static func assess(api: APIClient, snapshot: SessionRecord, passage: Passage) async throws -> FinalAssessmentResult {
+    private struct AssessmentResult: Decodable { var outcome: Outcome; var suggestedLevel: Int; var nextGoal: String; var capability: String; var words: [WordProposal]; var completed: Bool; var feedback: [UsageFeedback] }
+    private static func assess(api: APIClient, snapshot: SessionRecord, passage: Passage, knownWords: [WordState] = []) async throws -> FinalAssessmentResult {
         guard let language = LanguageRegistry.module(for: snapshot.languageID) else { throw ArchiveError.unsupportedLanguage }
-        let result = try await api.respond(instructions: TeachingPolicy.assessment(language: language), input: TeachingPolicy.context(snapshot, passage: passage), schema: APIClient.assessmentSchema(language: language))
+        let result = try await api.respond(instructions: TeachingPolicy.assessment(language: language, knownWords: knownWords), input: TeachingPolicy.context(snapshot, passage: passage), schema: APIClient.assessmentSchema(language: language))
         let decoded = try JSONDecoder().decode(AssessmentResult.self, from: Data(result.text.utf8))
-        let proposed = Assessment(passageID: passage.id, revisionKey: passage.revisionKey, outcome: decoded.outcome, suggestedLevel: decoded.suggestedLevel,
+        var proposed = Assessment(passageID: passage.id, revisionKey: passage.revisionKey, outcome: decoded.outcome, suggestedLevel: decoded.suggestedLevel,
                                   nextGoal: decoded.nextGoal, capability: decoded.capability, words: decoded.words, context: snapshot.themeID ?? "free")
+        proposed.completed = decoded.completed; proposed.feedback = decoded.feedback
         return FinalAssessmentResult(sessionID: snapshot.id, languageID: snapshot.languageID, assessment: proposed,
                                      inputTokens: result.usage.input, outputTokens: result.usage.output, searchCalls: result.usage.searches)
     }
@@ -374,7 +382,7 @@ import MuralCore
                 guard let self, let snapshot = self.session, let p = snapshot.passages.last(where: { $0.speaker == .user }), p.text.count >= 3,
                       p.revisionKey != self.lastAssessmentKey, self.state == .active else { return }
                 guard let targetLanguage = LanguageRegistry.module(for: snapshot.languageID) else { return }
-                let result = try await Self.assess(api: self.api, snapshot: snapshot, passage: p)
+                let result = try await Self.assess(api: self.api, snapshot: snapshot, passage: p, knownWords: self.store.learner.words)
                 guard !Task.isCancelled, self.state == .active, self.session?.id == snapshot.id, self.userPassage?.revisionKey == p.revisionKey,
                       let current = self.session else { return }
                 guard let validated = LearningEngine.validate(result.assessment, session: current) else { return }
@@ -392,6 +400,7 @@ import MuralCore
         }
     }
     private func checkLanguage() {
+        guard !conversationStyle.supportBanter else { return }
         guard let p = assistantPassage, p.text.count > 70, p.id != lastLanguageCheck else { return }
         let recognizer = NLLanguageRecognizer(); recognizer.processString(p.text)
         if let detected = recognizer.languageHypotheses(withMaximum: 2).max(by: { $0.value < $1.value }),
@@ -429,21 +438,43 @@ import MuralCore
             }
         }
     }
-    func sendTyped(_ text: String) async {
+    @discardableResult func sendTyped(_ text: String) async -> Bool {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard state == .active, !clean.isEmpty, let snapshot = session else { return }
+        if let problem = InputLimits.problem(text, limit: InputLimits.typedReply) { error = problem; return false }
+        guard state == .active, let snapshot = session else { error = "Start a conversation before sending your reply."; return false }
         let offset = Int(Date().timeIntervalSince(snapshot.startedAt) * 1000)
-        session?.append(Fragment(speaker: .user, text: String(clean.prefix(2000)), startMS: offset, endMS: offset + 1,
+        session?.append(Fragment(speaker: .user, text: clean, startMS: offset, endMS: offset + 1,
                                  meaningVisible: store.preferences.meaningVisible, typed: true))
         save(); working = true
         defer { if session?.id == snapshot.id { working = false } }
         do {
-            let result = try await api.respond(instructions: TeachingPolicy.typedReply(language: language), input: TeachingPolicy.context(session!))
-            guard session?.id == snapshot.id, state == .active else { return }
+            let result = try await api.respond(instructions: TeachingPolicy.typedReply(language: language, style: conversationStyle, meaningLanguage: store.preferences.meaningLanguage), input: TeachingPolicy.context(session!))
+            guard session?.id == snapshot.id, state == .active else { return true }
             addUsage(result.usage)
             append("thinking", "The learner typed (data): \(String(clean.prefix(650)))")
             append("commentary", result.text); scheduleAssessment(); save()
-        } catch { if session?.id == snapshot.id { self.error = error.localizedDescription } }
+        } catch { if session?.id == snapshot.id { self.error = "Your reply is saved, but the response failed. " + error.localizedDescription } }
+        return true
+    }
+    func updateReadingAid() async {
+        reading = nil; readingError = nil
+        guard readingEnabled else { return }
+        guard let passage = assistantPassage else { reading = .greeting; return }
+        guard hasAIConsent, !ProcessInfo.processInfo.arguments.contains("--preview") else { return }
+        let requestID = readingRequestID
+        do {
+            try await Task.sleep(for: .milliseconds(900))
+            let result = try await api.respond(instructions: JapaneseReading.guidance, input: passage.text,
+                schema: APIClient.object(["writing": APIClient.string, "reading": APIClient.string, "romaji": APIClient.string]))
+            let candidate = try JSONDecoder().decode(JapaneseReading.self, from: Data(result.text.utf8))
+            guard !Task.isCancelled, requestID == readingRequestID else { return }
+            guard candidate.writing == passage.text, !candidate.reading.isEmpty, !candidate.romaji.isEmpty,
+                  candidate.reading.count <= passage.text.count * 8 + 100, candidate.romaji.count <= passage.text.count * 16 + 100 else {
+                readingError = "A reliable reading isn’t available for this phrase."; return
+            }
+            reading = candidate; addUsage(result.usage); scheduleSave()
+        } catch is CancellationError { }
+        catch { if !Task.isCancelled, requestID == readingRequestID { readingError = "Reading aid unavailable. Tap a phrase to look it up." } }
     }
     func lookup(word: String, sentence: String) async throws -> String {
         guard hasAIConsent else { throw AIProcessingConsent.ConsentError.required }
