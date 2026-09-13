@@ -206,10 +206,10 @@ struct TalkView: View {
                 else if !coordinator.isRunning { coordinator.start() }
             } label: {
                 ZStack {
-                    Circle().fill(LinearGradient(colors: [Color(red: 1, green: 0.73, blue: 0.48), MuralColor.orange], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Circle().fill(LinearGradient(colors: [Color(red: 0.52, green: 0.46, blue: 0.94), MuralColor.iris], startPoint: .topLeading, endPoint: .bottomTrailing))
                     if coordinator.state == .connecting || coordinator.state == .closing { ProgressView().tint(MuralColor.ink) }
                     else { Image(systemName: coordinator.isMuted && coordinator.state == .active ? "mic.slash" : "mic").font(.system(size: 28, weight: .regular)).contentTransition(.symbolEffect(.replace)) }
-                }.frame(width: 76, height: 76).shadow(color: MuralColor.orange.opacity(0.25), radius: 10, y: 6)
+                }.frame(width: 76, height: 76).shadow(color: MuralColor.iris.opacity(0.28), radius: 10, y: 6)
             }.buttonStyle(.plain).padding(.bottom, 18)
                 .disabled(coordinator.state == .connecting || coordinator.state == .closing)
                 .accessibilityLabel(coordinator.state == .active ? (coordinator.isMuted ? "Unmute microphone" : "Mute microphone") : "Start conversation")
@@ -315,7 +315,7 @@ struct TypedReplyView: View {
                     let accepted = await coordinator.sendTyped(text); sending = false
                     if accepted { dismiss() } else { sendError = coordinator.error }
                 } } label: {
-                    HStack { Text(sending ? "Sending…" : "Send reply"); Spacer(); Image(systemName: "arrow.up") }.padding(18).background(MuralColor.orange, in: Capsule())
+                    HStack { Text(sending ? "Sending…" : "Send reply"); Spacer(); Image(systemName: "arrow.up") }.padding(18).background(MuralColor.iris, in: Capsule())
                 }.disabled(sending || InputLimits.problem(text, limit: InputLimits.typedReply) != nil).accessibilityIdentifier("send-typed-reply")
                 Spacer()
             }.padding(26).foregroundStyle(MuralColor.ink).background(MuralColor.cream)

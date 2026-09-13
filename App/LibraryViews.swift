@@ -74,7 +74,7 @@ struct CurrentTopicView: View {
                         Text(.init(brief.text)).font(.body).textSelection(.enabled)
                         SourcesView(sources: brief.sources, date: brief.retrievedAt)
                         Button("Talk about this", systemImage: "waveform") { coordinator.discuss(brief); selected(); dismiss() }
-                            .font(.headline).padding(18).frame(maxWidth: .infinity).background(MuralColor.orange, in: Capsule())
+                            .font(.headline).foregroundStyle(.white).padding(18).frame(maxWidth: .infinity).background(MuralColor.iris, in: Capsule())
                     }
                     Text("Search uses your OpenAI API account. Sources stay attached to the topic.").font(.footnote).foregroundStyle(MuralColor.secondary)
                 }.padding(26)
