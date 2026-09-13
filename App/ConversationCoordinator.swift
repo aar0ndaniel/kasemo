@@ -116,7 +116,7 @@ import MuralCore
         default: "Microphone off"
         }
     }
-    func start(initiallyMuted: Bool = false) {
+    func start(initiallyMuted: Bool = true) {
         guard !isRunning else { return }
         guard hasAIConsent else { startAfterConsent = true; showAIConsent = true; return }
         #if DEBUG

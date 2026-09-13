@@ -70,7 +70,7 @@ extension AudioVerification {
         write(status: "running", results: results)
         for _ in 0..<2 {
             var result = Playback()
-            coordinator.start()
+            coordinator.start(initiallyMuted: false)
             let deadline = Date().addingTimeInterval(60)
             var connectedAt: Date?
             while Date() < deadline && !Task.isCancelled {
@@ -121,7 +121,7 @@ extension AudioVerification {
         }
         report("ready")
         do { try await Task.sleep(for: .seconds(30)) } catch { return }
-        coordinator.start()
+        coordinator.start(initiallyMuted: false)
         defer { coordinator.end(reason: "Spanish recording demo") }
         let connectionDeadline = Date().addingTimeInterval(45)
         while coordinator.state == .connecting && Date() < connectionDeadline {
@@ -194,7 +194,7 @@ extension AudioVerification {
         }
         write()
         coordinator.store.updatePreferences { $0.meaningVisible = true; $0.meaningLanguage = "English" }
-        coordinator.start()
+        coordinator.start(initiallyMuted: false)
         let deadline = Date().addingTimeInterval(45)
         while Date() < deadline && !Task.isCancelled {
             if coordinator.state == .active, !coordinator.meaning.isEmpty, !coordinator.translating {
