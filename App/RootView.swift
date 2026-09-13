@@ -134,13 +134,13 @@ struct TalkView: View {
                                     return coordinator.session == nil ? .wave : .neutral
                                 }
                             }()
-                            GhostMascotView(pose: pose, size: typeSize.isAccessibilitySize ? 140 : 175, animated: true, energy: energy)
-                                .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222)
+                            GhostMascotView(pose: pose, size: typeSize.isAccessibilitySize ? 140 : 150, animated: true, energy: energy)
+                                .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 185)
                                 .contentShape(Rectangle())
                                 .accessibilityIdentifier("ghost-companion")
                         } else {
                             MuralOrb(energy: energy, listening: coordinator.state == .active && !coordinator.isMuted, active: coordinator.state != .closing)
-                                .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 222)
+                                .frame(width: typeSize.isAccessibilitySize ? 170 : 220, height: typeSize.isAccessibilitySize ? 180 : 185)
                                 .contentShape(Circle())
 
                         }

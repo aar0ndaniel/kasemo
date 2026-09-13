@@ -10,6 +10,9 @@ final class MuralUITests: XCTestCase {
         let caption = app.staticTexts["target-caption"]
         XCTAssertLessThan(app.staticTexts["meaning-caption"].frame.maxY, caption.frame.minY)
         XCTAssertLessThan(caption.frame.maxY, mascot.frame.minY)
+        let modeToggle = app.buttons["toggle-companion-mode"]
+        XCTAssertTrue(modeToggle.isHittable)
+        XCTAssertLessThan(modeToggle.frame.maxY, app.buttons["Hide meaning subtitles"].frame.minY)
         mascot.press(forDuration: 0.5)
         XCTAssertEqual(app.staticTexts["microphone-status"].label, "Microphone muted")
         let origin = mascot.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
